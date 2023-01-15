@@ -1,0 +1,40 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "Dedicated\\Scripts"
+		},
+	],
+	"settings": {
+		"editor.tabSize": 2,
+		"editor.detectIndentation": false,
+		"editor.insertSpaces": false,
+		"diffEditor.ignoreTrimWhitespace": false,
+		"files.trimTrailingWhitespace": true,
+		"files.encoding": "utf8",
+		"files.eol": "\n"
+	},
+	"extensions": {
+		"recommendations": [
+			"aessi.vscode-mslint",
+			"reaby.maniascript-support",
+			"redhat.vscode-xml"
+		]
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"type": "node",
+				"request": "launch",
+				"name": "Launch Program",
+				"skipFiles": [
+					"<node_internals>/**"
+				],
+				"program": "${workspaceFolder}/Tools/restartmode.js"
+			}
+		]
+	}
+}

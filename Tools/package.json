@@ -1,0 +1,15 @@
+{
+  "name": "minicontrol",
+  "version": "1.0.0",
+  "description": "",
+  "main": "minicontrol.js",
+  "scripts": {
+		"start": "node minicontrol.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@evotm/gbxclient": "1.2.1"
+  }
+}

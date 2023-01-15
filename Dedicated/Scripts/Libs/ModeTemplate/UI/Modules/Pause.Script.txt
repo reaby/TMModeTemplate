@@ -1,0 +1,13 @@
+// #RequireContext CMlScriptIngame
+
+/**
+* Get Manialink
+*/
+Text GetManialink() {
+	return """
+	<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+	<manialink version="3">
+		<label text="$f90GAME IS PAUSED" textfont="GameFontSemiBold" textsize="7" pos="0 60" halign="center" valign="center" size="100 6" textemboss="1"/>
+	</manialink>
+	""";
+}

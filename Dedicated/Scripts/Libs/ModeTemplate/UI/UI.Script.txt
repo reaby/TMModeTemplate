@@ -1,0 +1,172 @@
+// #RequireContext CSmMode
+
+#Include "Libs/Nadeo/ModeLibs/Legacy/Layers2.Script.txt" 															as Layers
+#Include "Libs/Nadeo/ModeLibs/Common/UIModules_Server.Script.txt" 										as UIModules
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/TimeGap_Server.Script.txt" 						as UIModules_TimeGap
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Checkpoint_Server.Script.txt" 					as UIModules_Checkpoint
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Chrono_Server.Script.txt" 							as UIModules_Chrono
+#Include "Libs/Nadeo/ModeLibs/Common/UIModules_Server.Script.txt" 										as UIModules
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Countdown_Server.Script.txt" 					as UIModules_Countdown
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/DisplayMessage_Server.Script.txt" 			as UIModules_DisplayMessage
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/SpectatorBase_Server.Script.txt" 			as UIModules_SpectatorBase
+
+// Load ui modules
+#Include "Libs/ModeTemplate/UI/Modules/Pause.Script.txt" 															as PauseWidget
+
+// Define layers
+#Const C_Layer_PauseWidget "Layer_PauseWidget"
+
+
+declare Integer donothing; // we need to define one variable for the maniascript engine to work right.
+
+/**
+* Inits settings
+*/
+Void InitSettings() {
+	UseMultiClans = True;
+	UseClans = True;
+	UseForcedClans = True;
+	UsePvPCollisions = False;
+	UsePvECollisions = True;
+	UsePvPWeapons = False;
+	UseGuns = False;
+	UseInterractiveScreensIn3d = False;
+	UseLaserVsBullets = False;
+	UseLaserSkewering = False;
+	UsePlayerTagging = False;
+	UseBeaconsWithRecipients = False;
+	UseAmmoBonusOnHit = False;
+	UseSameWallJump = False;
+	UseDefaultActionEvents = False;
+	UnspawnAnimDuration = 0;
+	SpawnDelayDuration = 0;
+	SpawnInvulnerabilityDuration = 0;
+	UseProtectClanmates = False;
+	UseAllies = False;
+	UseLaunchedCheckpoints = True;
+	ReadonlyLaunchedCheckpoints = False;
+	CrudeExtrapolation_AllowDelay = False;
+}
+
+/**
+* Load modules
+*/
+Void Load() {
+	UIManager.UIAll.DisableZoomTransitions = False; 	// Spawn animation (camera-overview-to-car zoom effect)
+	UIManager.UIAll.OverlayHideNotices = False;
+	UIManager.UIAll.OverlayHideMapInfo = True;
+	UIManager.UIAll.OverlayHideOpponentsInfo = True; 	// ?
+	UIManager.UIAll.OverlayHideChat = False;
+	UIManager.UIAll.OverlayHideCheckPointList = False;
+	UIManager.UIAll.OverlayHideRoundScores = True;
+	UIManager.UIAll.OverlayHideCountdown = True;
+	UIManager.UIAll.OverlayHideCrosshair = True;
+	UIManager.UIAll.OverlayHideGauges = True;
+	UIManager.UIAll.OverlayHideConsumables = True;
+	UIManager.UIAll.OverlayHide321Go = False;
+	UIManager.UIAll.OverlayMute321Go = False;
+	UIManager.UIAll.OverlayHideBackground = True; // ?
+	UIManager.UIAll.OverlayHideChrono = False;
+	UIManager.UIAll.OverlayHideSpeedAndDist = False;
+	UIManager.UIAll.OverlayHidePersonnalBestAndRank = False;
+	UIManager.UIAll.OverlayHidePosition = False;
+	UIManager.UIAll.OverlayHideCheckPointTime = False;
+	UIManager.UIAll.OverlayHideEndMapLadderRecap = True;
+	UIManager.UIAll.OverlayHideMultilapInfos = False;
+	UIManager.UIAll.OverlayHideSpectatorControllers = False;
+	UIManager.UIAll.OverlayHideSpectatorInfos = False;
+	UIManager.UIAll.OverlayChatHideAvatar = True;
+	UIManager.UIAll.ScoreTableOnlyManialink = True; // Hide default simple scoreboard
+	UIManager.UIAll.TeamLabelsShowNames = CUIConfig::EVisibility::ForcedVisible;
+	UIManager.UIAll.TeamLabelsVisibility = CUIConfig::ELabelsVisibility::WhenInFrustum;
+	UIManager.UIAll.OpposingTeamLabelsShowNames = CUIConfig::EVisibility::ForcedVisible;
+	UIManager.UIAll.OpposingTeamLabelsVisibility = CUIConfig::ELabelsVisibility::WhenVisible;
+	UIManager.UIAll.LabelsVisibility = CUIConfig::EHudVisibility::Everything;
+	CheckpointBehaviour = CSmMode::ECheckpointBehaviour::Default;
+	RespawnBehaviour = CSmMode::ERespawnBehaviour::AlwaysRespawn;
+	GiveUpBehaviour = CSmMode::EGiveUpBehaviour::GiveUp;
+
+	UIModules::Load();
+	UIModules_TimeGap::Load();
+	UIModules_Checkpoint::Load();
+	UIModules_Chrono::Load();
+	UIModules_Countdown::Load();
+	UIModules_DisplayMessage::Load();
+	UIModules_SpectatorBase::Load();
+
+	foreach (Player in AllPlayers) {
+		UIModules_Chrono::InitializePlayer(Player);
+		UIModules_SpectatorBase::InitializePlayer(Player);
+	}
+
+	UIModules::InitializeCustomizableModule(UIModules_Chrono::GetConfig());
+	UIModules::InitializeCustomizableModule(UIModules_Countdown::GetConfig());
+	UIModules::InitializeCustomizableModule(UIModules_Checkpoint::GetConfig());
+	UIModules::InitializeCustomizableModule(UIModules_TimeGap::GetConfig());
+	UIModules::InitializeCustomizableModule(UIModules_DisplayMessage::GetConfig());
+	UIModules::InitializeCustomizableModule(UIModules_SpectatorBase::GetConfig_Name());
+	UIModules::InitializeCustomizableModule(UIModules_SpectatorBase::GetConfig_Commands());
+
+
+	UIModules::LoadModules([
+		UIModules_Chrono::GetId(),
+		UIModules_Countdown::GetId(),
+		UIModules_Checkpoint::GetId(),
+		UIModules_TimeGap::GetId(),
+		UIModules_DisplayMessage::GetId(),
+		UIModules_SpectatorBase::GetId()
+	]);
+
+
+	UIModules_TimeGap::SetCustomTeamColors("000000", "000000");
+}
+
+/**
+* Set modulestatuses for player
+*/
+Void SetModuleStatus(CSmPlayer Player, Boolean Status) {
+	UIModules_Chrono::SetVisibility(Player, Status);
+	UIModules_Countdown::SetVisibility(Player, Status);
+	UIModules_Checkpoint::SetVisibility(Player, Status);
+	UIModules_TimeGap::SetVisibility(Player, Status);
+	UIModules_DisplayMessage::SetVisibility(Player, Status);
+	UIModules_SpectatorBase::SetVisibility(Player, Status);
+}
+
+/**
+* Clears messages
+*/
+Void ClearAllMessages() {
+	UIManager.UIAll.ClearMessages();
+	foreach (Player in AllPlayers) {
+		declare CUIConfig UI <=> UIManager.GetUI(Player);
+		if (UI != Null) {
+			UI.ClearMessages();
+		}
+	}
+}
+
+/**
+* Queue Big Message
+*/
+Void QueueBigMessage(Text Message, Integer Duration, Integer Priority) {
+	ClearAllMessages();
+	UIManager.UIAll.QueueMessage(Duration, Priority, CUIConfig::EMessageDisplay::Big, Message);
+}
+
+/**
+* Shows pause widget
+*/
+Void ShowPause() {
+	Layers::Create(C_Layer_PauseWidget, PauseWidget::GetManialink());
+	Layers::SetType(C_Layer_PauseWidget, CUILayer::EUILayerType::Normal);
+	Layers::Attach(C_Layer_PauseWidget);
+}
+
+/**
+* Hides pause widget
+*/
+Void HidePause() {
+	Layers::Detach(C_Layer_PauseWidget);
+}
+
