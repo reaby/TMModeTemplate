@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<?xml-model href="https://raw.githubusercontent.com/reaby/manialink-xsd/main/manialink_v3.xsd"?>
+<manialinks>
+	<manialink version="3" id="reloader">
+		<label text="  F5 reload" action="minicontrol.reload" actionkey="1" focusareacolor1="500" focusareacolor2="d00" opacity="0.7" size="15 5" valign="center" halign="left" pos="-160 -50" textsize="1" />
+	</manialink>
+</manialinks>

@@ -42,7 +42,7 @@ Linux:
 
 The workspace is set to deploy the updated script at local dedicated server when you press F5 at vscode.
 
-Alternative you can start a minicontroller at `Tools`-folder, by running `npm start`.
+Alternative you can start a minicontroller at `Tools`-folder, by running `npm start`, then you can do as well F5 to reload the mode at ingame.
 
 The default chat commands for minicontroller are:
 - `/reload` to reload mode
