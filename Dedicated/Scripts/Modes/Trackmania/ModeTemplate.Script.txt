@@ -4,19 +4,21 @@
 * When going into production, swap the comments on the lines below
 */
 
+#RequireContext CSmMode
+
 #Extends "Libs/Beu/ModeLibs/TM_DebugMode.Script.txt"
 // #Extends "Libs/Zerax/ModeLibs/BaseModes/ModeBase.Script.txt"
-
-#RequireContext CSmMode
 
 #Include "MathLib" 	as ML
 #Include "TextLib" 	as TL
 #Include "ColorLib" as CL
 
-#Include "Libs/Nadeo/ModeLibs/Common/UIModules_Server.Script.txt" 					as UIModules
-#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Countdown_Server.Script.txt" as UIModules_Countdown
 #Include "Libs/ModeTemplate/UI/UI.Script.txt" 															as UI
-#Include "Libs/Nadeo/ModeLibs/Legacy/Pause.Script.txt" 											as Pause
+#Include "Libs/Nadeo/CMGame/Modes/Legacy/Pause.Script.txt" 											as Pause
+#Include "Libs/Nadeo/CMGame/Modes/UIModules_Server.Script.txt" as UIModules
+#Include "Libs/Nadeo/TMGame/Modes/Base/UIModules/Countdown_Server.Script.txt" as UIModules_Countdown
+#Include "Libs/Nadeo/TMGame/Modes/Race.Script.txt" as Race
+#Include "Libs/Nadeo/TMGame/Modes/Base/UIModules/Helpers_Server.Script.txt" as RaceHelpers
 
 #Const	 CompatibleMapTypes	"TrackMania\\TM_Race,TM_Race"										// accept default map types
 #Const	 Version						"2023-01-15"																		// use current date as version number
@@ -34,37 +36,37 @@ declare Boolean Private_PauseIsRunning;
 */
 Void SetEndTime(Integer _EndTime) {
 	EndTime = _EndTime;
-	declare netwrite Integer Net_EndTime for Teams[0];
-	Net_EndTime = EndTime;
+	RaceHelpers::SetTimeLimit(_EndTime);
 }
 
 /**
 * Init Player
 */
-Void Player_Init(CSmPlayer Player) {
-	Player.Dossard_Number = " ";  // remove dossard number
-	Player.Dossard_Color = TL::ToColor("FFF");
-	Player.TrustClientSimu = True; // set to False if you intent to use collision
-	Player.UseCrudeExtrapolation = True;
-	Player.ForceModelId = NullId; // set custom skins here
+Void Player_Init(CSmPlayer _Player) {
+	_Player.Dossard_Number = " ";  // remove dossard number
+	_Player.Dossard_Color = TL::ToColor("FFF");
+	_Player.TrustClientSimu = True; // set to False if you intent to use collision
+	_Player.UseCrudeExtrapolation = True;
+	_Player.ForceModelId = NullId; // set custom skins here
+	Race::ApplyNetworkMode(_Player);
 }
 
 /**
 * Spawns a Player
 */
-Void Player_Spawn(CSmPlayer Player) {
-	Player_Init(Player);
+Void Player_Spawn(CSmPlayer _Player) {
+	Player_Init(_Player);
 
 	declare CMapLandmark SpawnLandmark = MapLandmarks_PlayerSpawn[0]; // set the landmark to spawn the player here.
 	if (SpawnLandmark == Null) return;
-	SpawnPlayer(Player, 1, 1, SpawnLandmark.PlayerSpawn, Now + 1500);
+	Race::Start(_Player, SpawnLandmark, 1, Now + 1500);
 }
 
 /**
 * Implement rules to spawn player here
 */
-Boolean Player_CanSpawn(CSmPlayer Player) {
-	if (Player.SpawnStatus != CSmPlayer::ESpawnStatus::NotSpawned) return False;
+Boolean Player_CanSpawn(CSmPlayer _Player) {
+	if (_Player.SpawnStatus != CSmPlayer::ESpawnStatus::NotSpawned) return False;
 	if (Private_MatchIsRunning) return True;
 	if (Private_WarmUpIsRunning) return True;
 
@@ -74,51 +76,51 @@ Boolean Player_CanSpawn(CSmPlayer Player) {
 /**
 * On Request respawn
 */
-Void OnPlayerRequestsRespawn(CSmPlayer Player) {
-	if (Player_CanSpawn(Player)) Player_Spawn(Player);
+Void OnPlayerRequestsRespawn(CSmPlayer _Player) {
+	if (Player_CanSpawn(_Player)) Player_Spawn(_Player);
 }
 
 /**
 * On Player Connect
 */
-Void OnPlayerAdded(CSmPlayer Player) {
-	UI::SetModuleStatus(Player, True);
+Void OnPlayerAdded(CSmPlayer _Player) {
+	UI::SetModuleStatus(_Player, True);
 	// @todo implement missing features
 }
 
 /**
 * On Player Disconnect
 */
-Void OnPlayerRemoved(CUser User) {
-	// @todo implement missing features
+Void OnPlayerRemoved(CUser _User) {
+	log("user left:" ^ _User.Name);
 }
 
 
 /**
 * Helper to set warmup status
 */
-Void SetWarmupStatus(Boolean status) {
-	Private_WarmUpIsRunning = status;
-	declare netwrite Boolean Net_WarmUpIsRunning for Teams[0];
-	Net_WarmUpIsRunning = status;
+Void SetWarmupStatus(Boolean _Status) {
+	Private_WarmUpIsRunning = _Status;
+	declare netwrite Boolean Net_WarmUpIsRunning for Teams[0] = _Status;
+	Net_WarmUpIsRunning = _Status;
 }
 
 /**
 * Helper to set pause status
 */
-Void SetPauseStatus(Boolean status) {
-	Private_PauseIsRunning = status;
-	Pause::SetActive(status);
-	declare netwrite Boolean Net_PauseIsRunning for Teams[0];
-	Net_PauseIsRunning = status;
+Void SetPauseStatus(Boolean _Status) {
+	Private_PauseIsRunning = _Status;
+	Pause::SetActive(_Status);
+	declare netwrite Boolean Net_PauseIsRunning for Teams[0] = _Status;
+	Net_PauseIsRunning = _Status;
 }
 
 /**
 * Helper to get player from uuid
 */
-CSmPlayer GetPlayerFromUuid(Text Uuid) {
+CSmPlayer GetPlayerFromUuid(Text _Uuid) {
 	foreach(Player in AllPlayers) {
-		if (Player.User.WebServicesUserId == Uuid) return Player;
+		if (Player.User.WebServicesUserId == _Uuid) return Player;
 	}
 
 	return Null;
@@ -129,7 +131,7 @@ CSmPlayer GetPlayerFromUuid(Text Uuid) {
 * Use this instead of MB_Sleep to catch Player disconnectes and connects.
 */
 Void Sleep(Integer _Duration) {
-	declare End = Now + _Duration;
+	declare Integer End = Now + _Duration;
 	while (Now < End && MB_ServerIsRunning())  {
 		foreach (Event in PendingEvents) {
 			switch (Event.Type) {
@@ -173,12 +175,12 @@ SetEndTime(-1);
 ***Settings***
 ***
 UI::InitSettings();
-ClientManiaAppUrl = "file://Media/ManiaApps/Nadeo/TMNext/TrackMania/Rounds/Rounds.Script.txt";  // we're focusing on rounds,so set base mania app to rounds
 ***
 
 
 ***LoadLibraries***
 ***
+Race::Load(True,True,True,False,False);
 Pause::Load();
 Pause::SetAvailability(True);
 ***
@@ -187,27 +189,35 @@ Pause::SetAvailability(True);
 ***LoadHud***
 ***
 UI::Load();
+
 ***
 
 
 ***InitMap***
 ***
+Race::UseAutomaticDossardColor(False);
+Race::SetLocalMode(False);
+Race::SetSplitScreen(False);
 MB_Synchro();
-Scores_SetSortCriteria(CSmMode::ESmScoreSortOrder::PrevRace); // set the scores sort criteria here
-
-// Set Modules to show
-foreach(Player in AllPlayers) {
-	UI::SetModuleStatus(Player, True);
+Scores_SetSortCriteria(CSmMode::ESmScoreSortOrder::BestRace);
+foreach(_Player in AllPlayers) {
+	UI::SetModuleStatus(_Player, True);
 }
-
 UIManager.UIAll.UISequence = CUIConfig::EUISequence::PlayersPresentation;
 MatchEndRequested = False;
+***
+
+
+***AfterLoadMap***
+***
+Race::AfterLoadMap(Map);
 ***
 
 ***StartMap***
 ***
 Sleep(1500);
 
+Race::ResetAllPlayers();
 StartTime = Now; 		// Start time has to be set otherwise cannot spawn players
 SetEndTime(-1);
 
@@ -221,11 +231,7 @@ Private_MatchIsRunning = True;
 
 ***StartRound***
 ***
-// ClearScores
-foreach(Player in Players) {
-	Player_ClearRaceWaypointTimes(Player);
-	Player_SetPlayerCurRaceAsScorePrevRace(Player);
-}
+Race::ResetAllPlayers();
 
 // Run pause, if needed
 if (Pause::IsActive()) {
@@ -264,15 +270,16 @@ Sleep(1500);
 
 ***EndRound***
 ***
-foreach(Player in Players) {
-	UnspawnPlayer(Player);
+foreach(_Player in Players) {
+	Race::Wait(_Player, True);
 }
+
 ***
 
 
 ***EndMap***
 ***
-declare Boolean donothing; // @todo remove when you implement logic here
+declare Boolean Donothing; // @todo remove when you implement logic here
 ***
 
 
@@ -287,29 +294,27 @@ Private_MatchIsRunning = False;
 // Handle events
 foreach (Event in PendingEvents) {
 	if(Event.GiveUp) {
-		UnspawnPlayer(Event.Player);
+		Race::Wait(Event.Player, True);
 	}
 	switch (Event.Type) {
 		case CSmModeEvent::EType::OnPlayerAdded: OnPlayerAdded(Event.Player);
 		case CSmModeEvent::EType::OnPlayerRemoved: OnPlayerRemoved(Event.User);
 		case CSmModeEvent::EType::OnPlayerTriggersWaypoint: {
 			if (Event.IsFinish) {
-				Player_SetPlayerCurRaceAsScorePrevRace(Event.Player);
 				if (!G_FirstFinish) {
 					G_FirstFinish = True;
 					SetEndTime(Now + S_FinishTimeout * 1000);
 				}
 				if (Event.Player != Null) {
-					UnspawnPlayer(Event.Player);
+					Race::Wait(Event.Player, True);
 				}
 			}
 		}
 	}
 }
 
-// Spawn unspawned players
-foreach (Player in Players) {
-	if (Player_CanSpawn(Player)) Player_Spawn(Player);
+foreach (_Player in Players) {
+	if (Player_CanSpawn(_Player)) Player_Spawn(_Player);
 }
 
 // Pause activation
@@ -329,7 +334,7 @@ if (EndTime != -1 && Now >= EndTime) {
 // Handle events
 foreach (Event in PendingEvents) {
 	if(Event.GiveUp) {
-		UnspawnPlayer(Event.Player);
+		Race::Wait(Event.Player, True);
 	}
 	switch (Event.Type) {
 		case CSmModeEvent::EType::OnPlayerAdded: OnPlayerAdded(Event.Player);
@@ -337,7 +342,7 @@ foreach (Event in PendingEvents) {
 		case CSmModeEvent::EType::OnPlayerTriggersWaypoint: {
 			if (Event.IsFinish) {
 				if (Event.Player != Null) {
-					UnspawnPlayer(Event.Player);
+					Race::Wait(Event.Player, True);
 				}
 			}
 		}
@@ -364,7 +369,7 @@ foreach (XmlRpcEvent in XmlRpc.PendingEvents) {
 		}
 	}
 }
-
+Race::Yield();
 Pause::Yield();
 UIModules::Yield();
 
@@ -374,13 +379,17 @@ if (Private_ForceEndRound) {
 	MB_StopRound();
 }
 
-declare MB_Race_PreviousEndTime for This = -2;
+declare Integer MB_Race_PreviousEndTime for This = -2;
 if (MB_Race_PreviousEndTime != EndTime) {
 	MB_Race_PreviousEndTime = EndTime;
 	UIModules_Countdown::SetTimeLimit(EndTime);
 }
 ***
 
-
 // This has to be here for maniascript engine to work right
-Void doNothing() { }
+Void Private_doNothing() {
+	declare Integer DoNothing = 0;
+	if (DoNothing == 0) {
+		DoNothing = 1;
+	}
+}

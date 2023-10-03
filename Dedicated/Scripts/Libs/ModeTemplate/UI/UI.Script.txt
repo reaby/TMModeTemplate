@@ -1,14 +1,13 @@
 // #RequireContext CSmMode
 
-#Include "Libs/Nadeo/ModeLibs/Legacy/Layers2.Script.txt" 															as Layers
-#Include "Libs/Nadeo/ModeLibs/Common/UIModules_Server.Script.txt" 										as UIModules
-#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/TimeGap_Server.Script.txt" 						as UIModules_TimeGap
-#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Checkpoint_Server.Script.txt" 					as UIModules_Checkpoint
-#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Chrono_Server.Script.txt" 							as UIModules_Chrono
-#Include "Libs/Nadeo/ModeLibs/Common/UIModules_Server.Script.txt" 										as UIModules
-#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Countdown_Server.Script.txt" 					as UIModules_Countdown
-#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/DisplayMessage_Server.Script.txt" 			as UIModules_DisplayMessage
-#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/SpectatorBase_Server.Script.txt" 			as UIModules_SpectatorBase
+#Include "Libs/Nadeo/CMGame/Modes/Legacy/Layers2.Script.txt" 														as Layers
+#Include "Libs/Nadeo/CMGame/Modes/UIModules_Server.Script.txt" 													as UIModules
+#Include "Libs/Nadeo/TMGame/Modes/Base/UIModules/TimeGap_Server.Script.txt" 						as UIModules_TimeGap
+#Include "Libs/Nadeo/TMGame/Modes/Base/UIModules/Checkpoint_Server.Script.txt" 					as UIModules_Checkpoint
+#Include "Libs/Nadeo/TMGame/Modes/Base/UIModules/Chrono_Server.Script.txt" 							as UIModules_Chrono
+#Include "Libs/Nadeo/TMGame/Modes/Base/UIModules/Countdown_Server.Script.txt" 					as UIModules_Countdown
+#Include "Libs/Nadeo/TMGame/Modes/Base/UIModules/DisplayMessage_Server.Script.txt" 			as UIModules_DisplayMessage
+#Include "Libs/Nadeo/TMGame/Modes/Base/UIModules/SpectatorBase_Server.Script.txt" 			as UIModules_SpectatorBase
 
 // Load ui modules
 #Include "Libs/ModeTemplate/UI/Modules/Pause.Script.txt" 															as PauseWidget
@@ -63,18 +62,15 @@ Void Load() {
 	UIManager.UIAll.OverlayHideCrosshair = True;
 	UIManager.UIAll.OverlayHideGauges = True;
 	UIManager.UIAll.OverlayHideConsumables = True;
-	UIManager.UIAll.OverlayHide321Go = False;
+	UIManager.UIAll.OverlayHide321Go = True;
 	UIManager.UIAll.OverlayMute321Go = False;
 	UIManager.UIAll.OverlayHideBackground = True; // ?
-	UIManager.UIAll.OverlayHideChrono = False;
 	UIManager.UIAll.OverlayHideSpeedAndDist = False;
 	UIManager.UIAll.OverlayHidePersonnalBestAndRank = False;
 	UIManager.UIAll.OverlayHidePosition = False;
 	UIManager.UIAll.OverlayHideCheckPointTime = False;
 	UIManager.UIAll.OverlayHideEndMapLadderRecap = True;
 	UIManager.UIAll.OverlayHideMultilapInfos = False;
-	UIManager.UIAll.OverlayHideSpectatorControllers = False;
-	UIManager.UIAll.OverlayHideSpectatorInfos = False;
 	UIManager.UIAll.OverlayChatHideAvatar = True;
 	UIManager.UIAll.ScoreTableOnlyManialink = True; // Hide default simple scoreboard
 	UIManager.UIAll.TeamLabelsShowNames = CUIConfig::EVisibility::ForcedVisible;
@@ -85,7 +81,7 @@ Void Load() {
 	CheckpointBehaviour = CSmMode::ECheckpointBehaviour::Default;
 	RespawnBehaviour = CSmMode::ERespawnBehaviour::AlwaysRespawn;
 	GiveUpBehaviour = CSmMode::EGiveUpBehaviour::GiveUp;
-
+	ClientManiaAppUrl = "file://Media/ManiaApps/Nadeo/Trackmania/Modes/Rounds.Script.txt";  // we're focusing on rounds,so set base mania app to rounds
 	UIModules::Load();
 	UIModules_TimeGap::Load();
 	UIModules_Checkpoint::Load();

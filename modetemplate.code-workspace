@@ -5,7 +5,7 @@
 		},
 		{
 			"path": "Dedicated\\Scripts"
-		},
+		}
 	],
 	"settings": {
 		"editor.tabSize": 2,

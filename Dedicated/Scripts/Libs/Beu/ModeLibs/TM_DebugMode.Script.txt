@@ -1,23 +1,41 @@
-
+// #RequireContext CSmMode
 /*
 * This mode is used to debug your modes during development.
 * To use it, you just have to change the line below to put the path of your mode:
 */
+
 #Extends "Libs/Zerax/ModeLibs/BaseModes/ModeBase.Script.txt"
-
-// #RequireContext CSmMode
-
-#Setting S_DebugLib_RestrictUIto "" as "Restrict UI Admin to comma separated logins (all if empty)"
-
-#Const C_DebugMode_MainUI "DebugMode_MainUI"
 
 #Include "TimeLib" as TiL
 #Include "MathLib" as ML
 #Include "TextLib" as TL
+#Include "Libs/Nadeo/CMGame/Modes/Utils.Script.txt" as ModeUtils
+#Include "Libs/Nadeo/CMGame/Modes/Legacy/Layers2.Script.txt" as Layers
+#Include "Libs/Nadeo/TMGame/Modes/Events.Script.txt" as Events
+#Include "Libs/Nadeo/TMGame/Modes/Race.Script.txt" as Race
 
-#Include "Libs/Nadeo/ModeLibs/Common/Utils.Script.txt" as ModeUtils
-#Include "Libs/Nadeo/ModeLibs/Legacy/Layers2.Script.txt" as Layers
-#Include "Libs/Nadeo/TMxSM/Race/Race.Script.txt" as Race
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Constants
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+#Const C_DebugMode_Version "2023-09-01"
+#Const C_DebugMode_MainUI "DebugMode_MainUI"
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Settings
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+#Setting S_ScriptEnvironment "development"
+#Setting S_DebugLib_RestrictUIto "" as "Restrict UI Admin to comma separated logins (all if empty)"
+
+***LogVersions***
+***
+log("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+log("~~~~~~~~~~~~~ Starting DebugMode v" ^ C_DebugMode_Version ^ " ~~~~~~~~~~~~~");
+log("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+log("~~ Launched at: "^ System.CurrentLocalDateText ^" ("^ System.CurrentTimezone ^")");
+log("~~ Server version: "^ System.ExeVersion);
+log("~~ TitlePack version: "^ TL::Split(" ", LoadedTitle.TitleVersion)[0]);
+log("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+***
 
 ***LoadHud***
 ***
@@ -28,12 +46,13 @@ Layers::SetType(C_DebugMode_MainUI, CUILayer::EUILayerType::Normal);
 ***InitMap***
 ***
 if (S_DebugLib_RestrictUIto == "") {
-    Layers::Attach(C_DebugMode_MainUI);
+	Layers::Attach(C_DebugMode_MainUI);
 } else {
-    foreach (Login in TL::Split(",", S_DebugLib_RestrictUIto)) {
-        declare CSmPlayer Player = GetPlayer(Login);
-        if (Player != Null) Layers::Attach(C_DebugMode_MainUI, Player);
-    }
+	Layers::Detach(C_DebugMode_MainUI);
+	foreach (Login in TL::Split(",", S_DebugLib_RestrictUIto)) {
+		declare CSmPlayer Player = GetPlayer(Login);
+		if (Player != Null) Layers::Attach(C_DebugMode_MainUI, Player);
+	}
 }
 ***
 
@@ -41,223 +60,233 @@ if (S_DebugLib_RestrictUIto == "") {
 ***
 // Manage Custom UI Events
 foreach (Event in UIManager.PendingEvents) {
-    +++DebugMode_LogFormat+++
-    switch (Event.CustomEventType) {
-        case "DebugMode.ClearLogs": {
-            Net_DebugMode_Logs = Prefix ^ "Logs cleared";
-        }
-        case "DebugMode.Bots.DelBots": {
-            declare Text Name = Event.CustomEventData[0];
-            declare Integer NumberOfBots = TL::ToInteger(Event.CustomEventData[1]);
-            if (NumberOfBots == -1) {
-                Users_DestroyAllFakes();
-            } else {
-                foreach (Player in AllPlayers) {
-                    if (Player.IsFakePlayer) {
-                        if (Name == "" || TL::ToLowerCase(Player.User.Name) == TL::ToLowerCase(Name)) {
-                            Net_DebugMode_Logs = Prefix ^ "Bots: Remove bot \"" ^ Player.User.Name ^ "\"\n" ^ Net_DebugMode_Logs;
-                            Users_DestroyFake(Player.User);
-                            NumberOfBots -= 1;
-                        } else {
-                            Net_DebugMode_Logs = Prefix ^ "Bots: Player not found\n" ^ Net_DebugMode_Logs;
-                        }
-                    }
-                    if (NumberOfBots == 0) break;
-                }
-            }
-        }
-        case "DebugMode.Bots.AddBots": {
-            declare Text Name = Event.CustomEventData[0];
-            declare Integer TeamId = TL::ToInteger(Event.CustomEventData[1]);
-            if (TeamId == -1 && Event.CustomEventData[1] == "") TeamId = 0;
-            declare Integer NumberOfBots = TL::ToInteger(Event.CustomEventData[2]);
-            if (TeamId != -1 && Teams.existskey(TeamId)) {
-                for (I, 1, NumberOfBots) {
-                    declare CUser User = Users_CreateFake(Name, TeamId);
-                    if (User != Null) {
-                        Net_DebugMode_Logs = Prefix ^ "Bots: Add bot \"" ^ User.Name ^ "\"\n" ^ Net_DebugMode_Logs;
-                    } else {
-                        Net_DebugMode_Logs = Prefix ^ "Bots: unknown error while adding bot \"" ^ Name ^ "\"\n" ^ Net_DebugMode_Logs;
-                    }
-                }
-            } else {
-                Net_DebugMode_Logs = Prefix ^ "Bots: Invalid TeamId\n" ^ Net_DebugMode_Logs;
-            }
-        }
-        case "DebugMode.PlayersControl.Set": {
-            declare Text TargetText = Event.CustomEventData[2];
-            declare CSmPlayer[] Targets;
-            if (TargetText == "allbots" || TargetText == "allplayers") {
-                foreach (Player in Players) {
-                    if (TargetText == "allbots" && !Player.IsFakePlayer) continue;
-                    Targets.add(Player);
-                }
-            } else {
-                declare CSmPlayer TmpPlayer = GetPlayer(TargetText);
-                if (TmpPlayer != Null) {
-                    Targets.add(TmpPlayer);
-                }
-            }
-            declare Real[] Speed;
-            foreach (SpeedText in TL::Split(",", Event.CustomEventData[0])) {
-                Speed.add(ML::Clamp(TL::ToReal(SpeedText), -999., 999.));
-            }
-            if (Speed.count > 0) {
-                declare Real[] Steer;
-                foreach (SteerText in TL::Split(",", Event.CustomEventData[1])) {
-                    Steer.add(ML::Clamp(TL::ToReal(SteerText), -1., 1.));
-                }
+	+++DebugMode_LogFormat+++
+	switch (Event.CustomEventType) {
+		case "DebugMode.ClearLogs": {
+			Net_DebugMode_Logs = Prefix ^ "Logs cleared";
+		}
+		case "DebugMode.Bots.DelBots": {
+			declare Text Name = Event.CustomEventData[0];
+			declare Integer NumberOfBots = TL::ToInteger(Event.CustomEventData[1]);
+			if (NumberOfBots == -1) {
+				Users_DestroyAllFakes();
+			} else {
+				foreach (Player in AllPlayers) {
+					if (Player.IsFakePlayer) {
+						if (Name == "" || TL::ToLowerCase(Player.User.Name) == TL::ToLowerCase(Name)) {
+							Net_DebugMode_Logs = Prefix ^ "Bots: Remove bot \"" ^ Player.User.Name ^ "\"\n" ^ Net_DebugMode_Logs;
+							Users_DestroyFake(Player.User);
+							NumberOfBots -= 1;
+						} else {
+							Net_DebugMode_Logs = Prefix ^ "Bots: Player not found\n" ^ Net_DebugMode_Logs;
+						}
+					}
+					if (NumberOfBots == 0) break;
+				}
+			}
+		}
+		case "DebugMode.Bots.AddBots": {
+			declare Text Name = Event.CustomEventData[0];
+			declare Integer TeamId = TL::ToInteger(Event.CustomEventData[1]);
+			if (TeamId == -1 && Event.CustomEventData[1] == "") TeamId = 0;
+			declare Integer NumberOfBots = TL::ToInteger(Event.CustomEventData[2]);
+			if (TeamId != -1 && Teams.existskey(TeamId)) {
+				for (I, 1, NumberOfBots) {
+					declare CUser User = Users_CreateFake(Name, TeamId);
+					if (User == Null) {
+						Net_DebugMode_Logs = Prefix ^ "Bots: unknown error while adding bot \"" ^ Name ^ "\"\n" ^ Net_DebugMode_Logs;
+					} else {
+						Net_DebugMode_Logs = Prefix ^ "Bots: Add bot \"" ^ User.Name ^ "\"\n" ^ Net_DebugMode_Logs;
+					}
+				}
+			} else {
+				Net_DebugMode_Logs = Prefix ^ "Bots: Invalid TeamId\n" ^ Net_DebugMode_Logs;
+			}
+		}
+		case "DebugMode.PlayersControl.Set": {
+			declare Text TargetText = Event.CustomEventData[2];
+			declare CSmPlayer[] Targets;
+			if (TargetText == "allbots" || TargetText == "allplayers") {
+				foreach (Player in Players) {
+					if (TargetText == "allbots" && !Player.IsFakePlayer) continue;
+					Targets.add(Player);
+				}
+			} else {
+				declare CSmPlayer TmpPlayer = GetPlayer(TargetText);
+				if (TmpPlayer != Null) {
+					Targets.add(TmpPlayer);
+				}
+			}
+			declare Real[] Speed;
+			foreach (SpeedText in TL::Split(",", Event.CustomEventData[0])) {
+				Speed.add(ML::Clamp(TL::ToReal(SpeedText), -999., 999.));
+			}
+			if (Speed.count > 0) {
+				declare Real[] Steer;
+				foreach (SteerText in TL::Split(",", Event.CustomEventData[1])) {
+					Steer.add(ML::Clamp(TL::ToReal(SteerText), -1., 1.));
+				}
 
-                foreach (Target in Targets) {
-                    if (Target.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned) continue;
+				foreach (Target in Targets) {
+					if (Target.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned) continue;
 
-                    Target.TrustClientSimu = False;
-                    SetPlayerVehicle_ControlledByMode(Target, True);
+					Target.TrustClientSimu = False;
+					SetPlayerVehicle_ControlledByMode(Target, True);
 
-                    declare Real SteerValue;
-                    if (Steer.count == 2) {
-                        SteerValue = ML::Rand(Steer[0] , Steer[1]);
-                    } else if (Steer.count == 1) {
-                        SteerValue = Steer[0];
-                    } else {
-                        SteerValue = 0.;
-                    }
-                    SetPlayerVehicle_SteerValue(Target, SteerValue);
+					declare Real SteerValue;
+					if (Steer.count == 2) {
+						SteerValue = ML::Rand(Steer[0] , Steer[1]);
+					} else if (Steer.count == 1) {
+						SteerValue = Steer[0];
+					} else {
+						SteerValue = 0.;
+					}
+					SetPlayerVehicle_SteerValue(Target, SteerValue);
 
-                    declare Real SpeedValue;
-                    if (Speed.count == 1) {
-                        SpeedValue = Speed[0];
-                    } else {
-                        SpeedValue = ML::Rand(Speed[0], Speed[1]);
-                    }
-                    SetPlayerVehicle_TargetSpeedValue(Target, SpeedValue);
+					declare Real SpeedValue;
+					if (Speed.count == 1) {
+						SpeedValue = Speed[0];
+					} else {
+						SpeedValue = ML::Rand(Speed[0], Speed[1]);
+					}
+					SetPlayerVehicle_TargetSpeedValue(Target, SpeedValue);
 
-                    Net_DebugMode_Logs = Prefix ^ "PlayersControl: Set Player " ^ Target.User.Name ^ " speed to " ^ SpeedValue ^ " & steer to " ^ SteerValue ^ "\n" ^ Net_DebugMode_Logs;
-                }
-            } else {
-                foreach (Target in Targets) {
-                    if (Target.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned) continue;
+					Net_DebugMode_Logs = Prefix ^ "PlayersControl: Set Player " ^ Target.User.Name ^ " speed to " ^ SpeedValue ^ " & steer to " ^ SteerValue ^ "\n" ^ Net_DebugMode_Logs;
+				}
+			} else {
+				foreach (Target in Targets) {
+					if (Target.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned) continue;
 
-                    SetPlayerVehicle_ControlledByMode(Target, False);
-										Target.TrustClientSimu = True;
+					SetPlayerVehicle_ControlledByMode(Target, False);
+					Race::ApplyNetworkMode(Target); //< Restore TrustClientSimu to its default value
+				}
+			}
+		}
+		case "DebugMode.VarInsp.Dump.Teams0": {
+			// prevent to dump Net_DebugMode_Logs in the dump
+			declare Text Tmp = Net_DebugMode_Logs;
+			Net_DebugMode_Logs = "";
+			Net_DebugMode_Logs = Prefix ^ "Teams[0] dump:\n" ^ Dbg_DumpDeclareForVariables(Teams[0], False) ^"\n" ^ Tmp;
+		}
+		case "DebugMode.VarInsp.Dump.UIAll": {
+			Net_DebugMode_Logs = Prefix ^ "UIAll dump:\n" ^ Dbg_DumpDeclareForVariables(UIManager.UIAll, False) ^"\n" ^ Net_DebugMode_Logs;
+		}
+		case "DebugMode.VarInsp.Dump.This": {
+			Net_DebugMode_Logs = Prefix ^ "This dump:\n" ^ Dbg_DumpDeclareForVariables(This, False) ^"\n" ^ Net_DebugMode_Logs;
+		}
+		case "DebugMode.VarInsp.ForVars.Dump.Player": {
+			declare CSmPlayer Player;
+			+++DebugMode_FindPlayer+++
 
-                }
-            }
-        }
-        case "DebugMode.VarInsp.Dump.Teams0": {
-            declare Text tmp = Net_DebugMode_Logs;
-            Net_DebugMode_Logs = "";
-            Net_DebugMode_Logs = Prefix ^ "Teams[0] dump:\n" ^ Dbg_DumpDeclareForVariables(Teams[0], False) ^"\n" ^ tmp;
-        }
-        case "DebugMode.VarInsp.Dump.UIAll": {
-            Net_DebugMode_Logs = Prefix ^ "UIAll dump:\n" ^ Dbg_DumpDeclareForVariables(UIManager.UIAll, False) ^"\n" ^ Net_DebugMode_Logs;
-        }
-        case "DebugMode.VarInsp.Dump.This": {
-            Net_DebugMode_Logs = Prefix ^ "This dump:\n" ^ Dbg_DumpDeclareForVariables(This, False) ^"\n" ^ Net_DebugMode_Logs;
-        }
-        case "DebugMode.VarInsp.ForVars.Dump.Player": {
-            declare CSmPlayer Player;
-            if (TL::Length(Event.CustomEventData[0]) == 36) {
-                Player <=> ModeUtils::GetPlayerFromAccountId(Event.CustomEventData[0]);
-            } else if (TL::Length(Event.CustomEventData[0]) == 22) {
-                Player <=> GetPlayer(Event.CustomEventData[0]);
-            } else {
-                foreach (TmpPlayer in AllPlayers) {
-                    if (TL::ToLowerCase(Event.CustomEventData[0]) == TL::ToLowerCase(TmpPlayer.User.Name)) {
-                        Player <=> TmpPlayer;
-                        break;
-                    }
-                }
-            }
+			if (Player == Null) {
+				Net_DebugMode_Logs = Prefix ^ "ForVars dump: player not found\n" ^ Net_DebugMode_Logs;
+			} else if (Event.CustomEventData[1] == "player") {
+				Net_DebugMode_Logs = Prefix ^ "Player ForVars dump for " ^ Player.User.Name ^ ":\n" ^ Dbg_DumpDeclareForVariables(Player, False) ^"\n" ^ Net_DebugMode_Logs;
+			} else if (Event.CustomEventData[1] == "score") {
+				Net_DebugMode_Logs = Prefix ^ "Score ForVars dump for " ^ Player.User.Name ^ ":\n" ^ Dbg_DumpDeclareForVariables(Player.Score, False) ^"\n" ^ Net_DebugMode_Logs;
+			} else {
+				declare CUIConfig UI = UIManager.GetUI(Player);
+				if (UI == Null) {
+					Net_DebugMode_Logs = Prefix ^ "UI ForVars dump for " ^ Player.User.Name ^ ": no UI found (it's a bot?)\n" ^ Net_DebugMode_Logs;
+				} else {
+					Net_DebugMode_Logs = Prefix ^ "UI ForVars dump for " ^ Player.User.Name ^ ":\n" ^ Dbg_DumpDeclareForVariables(UI, False) ^"\n" ^ Net_DebugMode_Logs;
+				}
+			}
+		}
+		case "DebugMode.VarInsp.Struct.Dump.Player": {
+			declare CSmPlayer Player;
+			+++DebugMode_FindPlayer+++
 
-            if (Player != Null) {
-                if (Event.CustomEventData[1] == "player") {
-                    Net_DebugMode_Logs = Prefix ^ "Player ForVars dump for " ^ Player.User.Name ^ ":\n" ^ Dbg_DumpDeclareForVariables(Player, False) ^"\n" ^ Net_DebugMode_Logs;
-                } else if (Event.CustomEventData[1] == "score") {
-                    Net_DebugMode_Logs = Prefix ^ "Score ForVars dump for " ^ Player.User.Name ^ ":\n" ^ Dbg_DumpDeclareForVariables(Player.Score, False) ^"\n" ^ Net_DebugMode_Logs;
-                } else {
-                    declare CUIConfig UI = UIManager.GetUI(Player);
-                    if (UI != Null) {
-                        Net_DebugMode_Logs = Prefix ^ "UI ForVars dump for " ^ Player.User.Name ^ ":\n" ^ Dbg_DumpDeclareForVariables(UI, False) ^"\n" ^ Net_DebugMode_Logs;
-                    } else {
-                        Net_DebugMode_Logs = Prefix ^ "UI ForVars dump for " ^ Player.User.Name ^ ": no UI found (it's a bot?)\n" ^ Net_DebugMode_Logs;
-                    }
-                }
-            } else {
-                Net_DebugMode_Logs = Prefix ^ "ForVars dump: player not found\n" ^ Net_DebugMode_Logs;
-            }
-        }
-        case "DebugMode.VarInsp.Struct.Dump.Player": {
-            declare CSmPlayer Player;
-            if (TL::Length(Event.CustomEventData[0]) == 36) {
-                Player <=> ModeUtils::GetPlayerFromAccountId(Event.CustomEventData[0]);
-            } else if (TL::Length(Event.CustomEventData[0]) == 22) {
-                Player <=> GetPlayer(Event.CustomEventData[0]);
-            } else {
-                foreach (TmpPlayer in AllPlayers) {
-                    if (TL::ToLowerCase(Event.CustomEventData[0]) == TL::ToLowerCase(TmpPlayer.User.Name)) {
-                        Player <=> TmpPlayer;
-                        break;
-                    }
-                }
-            }
-
-            if (Player != Null) {
-                if (Event.CustomEventData[1] == "player") {
-                    Net_DebugMode_Logs = Prefix ^ "Player Struct dump for " ^ Player.User.Name ^ ":\n" ^ Player ^"\n" ^ Net_DebugMode_Logs;
-                } else if (Event.CustomEventData[1] == "score") {
-                    Net_DebugMode_Logs = Prefix ^ "Score Struct dump for " ^ Player.User.Name ^ ":\n" ^ Player.Score ^"\n" ^ Net_DebugMode_Logs;
-                } else {
-                    declare CUIConfig UI = UIManager.GetUI(Player);
-                    if (UI != Null) {
-                        Net_DebugMode_Logs = Prefix ^ "UI ForVars dump for " ^ Player.User.Name ^ ":\n" ^ UI ^"\n" ^ Net_DebugMode_Logs;
-                    } else {
-                        Net_DebugMode_Logs = Prefix ^ "UI ForVars dump for " ^ Player.User.Name ^ ": no UI found (it's a bot?)\n" ^ Net_DebugMode_Logs;
-                    }
-                }
-            } else {
-                Net_DebugMode_Logs = Prefix ^ "Struct dump: player not found\n" ^ Net_DebugMode_Logs;
-            }
-        }
-        default: {
-            Net_DebugMode_Logs = Prefix ^ "Struct Event received: " ^ Event.CustomEventType ^"\n" ^ Net_DebugMode_Logs;
-        }
-    }
+			if (Player == Null) {
+				Net_DebugMode_Logs = Prefix ^ "Struct dump: player not found\n" ^ Net_DebugMode_Logs;
+			} else if (Event.CustomEventData[1] == "player") {
+				Net_DebugMode_Logs = Prefix ^ "Player Struct dump for " ^ Player.User.Name ^ ":\n" ^ Player ^"\n" ^ Net_DebugMode_Logs;
+			} else if (Event.CustomEventData[1] == "score") {
+				Net_DebugMode_Logs = Prefix ^ "Score Struct dump for " ^ Player.User.Name ^ ":\n" ^ Player.Score ^"\n" ^ Net_DebugMode_Logs;
+			} else {
+				declare CUIConfig UI = UIManager.GetUI(Player);
+				if (UI == Null) {
+					Net_DebugMode_Logs = Prefix ^ "UI ForVars dump for " ^ Player.User.Name ^ ": no UI found (it's a bot?)\n" ^ Net_DebugMode_Logs;
+				} else {
+					Net_DebugMode_Logs = Prefix ^ "UI ForVars dump for " ^ Player.User.Name ^ ":\n" ^ UI ^"\n" ^ Net_DebugMode_Logs;
+				}
+			}
+		}
+		default: {
+			Net_DebugMode_Logs = Prefix ^ "Struct Event received: " ^ Event.CustomEventType ^"\n" ^ Net_DebugMode_Logs;
+		}
+	}
 }
 
++++DebugMode_LogEvents+++
+***
+
+***DebugMode_FindPlayer***
+***
+if (TL::Length(Event.CustomEventData[0]) == 36) {
+	Player <=> ModeUtils::GetPlayerFromAccountId(Event.CustomEventData[0]);
+} else if (TL::Length(Event.CustomEventData[0]) == 22) {
+	Player <=> GetPlayer(Event.CustomEventData[0]);
+} else {
+	foreach (TmpPlayer in AllPlayers) {
+		if (TL::ToLowerCase(Event.CustomEventData[0]) == TL::ToLowerCase(TmpPlayer.User.Name)) {
+			Player <=> TmpPlayer;
+			break;
+		}
+	}
+}
+***
+
+***DebugMode_LogEvents***
+***
 foreach (Event in PendingEvents) {
-    +++DebugMode_LogFormat+++
-    Net_DebugMode_Logs = Prefix ^ "CSmMode PendingEvent: " ^ Event.Type ^"\n" ^ Net_DebugMode_Logs;
-    if (Event.Type == CSmModeEvent::EType::OnPlayerAdded) {
-        if (Event.Player != Null && TL::Split(",", S_DebugLib_RestrictUIto).exists(Event.Player.User.Login)) {
-            Layers::Attach(C_DebugMode_MainUI, Event.Player);
-        }
-    }
+	+++DebugMode_PendingEvents+++
 }
 
 foreach (Event in XmlRpc.PendingEvents) {
-    +++DebugMode_LogFormat+++
-    if (Event.Type == CXmlRpcEvent::EType::CallbackArray) {
-        Net_DebugMode_Logs = Prefix ^ "XmlRpc PendingEvent: " ^ Event.ParamArray1 ^"\n" ^ Net_DebugMode_Logs;
-    } else {
-        Net_DebugMode_Logs = Prefix ^ "XmlRpc PendingEvent: " ^ Event.Param1 ^"\n" ^ Net_DebugMode_Logs;
-    }
+	+++DebugMode_XmlRpcPendingEvents+++
 }
 
-declare RacePendingEvents = Race::GetPendingEvents();
+declare Events::K_RaceEvent[] RacePendingEvents = Race::GetPendingEvents();
 foreach (Event in RacePendingEvents) {
-    +++DebugMode_LogFormat+++
-    declare Text Type = "Unknown";
-    switch (Event.Type) {
-        case 1: Type = "Waypoint";
-        case 2: Type = "GiveUp";
-        case 3: Type = "Respawn";
-        case 4: Type = "SkipOutro";
-        case 5: Type = "StartLine";
-        case 6: Type = "Eliminated";
-    }
-    Net_DebugMode_Logs = Prefix ^ "Race Pending Event: " ^ Type ^"\n" ^ Net_DebugMode_Logs;
+	+++DebugMode_RacePendingEvents+++
 }
+***
+
+***DebugMode_PendingEvents***
+***
++++DebugMode_LogFormat+++
+Net_DebugMode_Logs = Prefix ^ "CSmMode PendingEvent: " ^ Event.Type ^"\n" ^ Net_DebugMode_Logs;
+if (Event.Type == CSmModeEvent::EType::OnPlayerAdded) {
+	if (Event.Player != Null && TL::Split(",", S_DebugLib_RestrictUIto).exists(Event.Player.User.Login)) {
+		Layers::Attach(C_DebugMode_MainUI, Event.Player);
+	}
+}
+***
+
+***DebugMode_XmlRpcPendingEvents***
+***
++++DebugMode_LogFormat+++
+if (Event.Type == CXmlRpcEvent::EType::CallbackArray) {
+	Net_DebugMode_Logs = Prefix ^ "XmlRpc PendingEvent: " ^ Event.ParamArray1 ^"\n" ^ Net_DebugMode_Logs;
+} else {
+	Net_DebugMode_Logs = Prefix ^ "XmlRpc PendingEvent: " ^ Event.Param1 ^"\n" ^ Net_DebugMode_Logs;
+}
+***
+
+***DebugMode_RacePendingEvents***
+***
++++DebugMode_LogFormat+++
+declare Text Type = "Unknown";
+switch (Event.Type) {
+	case 1: Type = "Waypoint";
+	case 2: Type = "GiveUp";
+	case 3: Type = "Respawn";
+	case 4: Type = "SkipOutro";
+	case 5: Type = "StartLine";
+	case 6: Type = "Eliminated";
+}
+Net_DebugMode_Logs = Prefix ^ "Race Pending Event: " ^ Type ^"\n" ^ Net_DebugMode_Logs;
 ***
 
 ***DebugMode_LogFormat***
@@ -279,598 +308,624 @@ Prefix ^= "] ";
 
 declare netwrite Text Net_DebugMode_Logs for Teams[0];
 if (TL::Length(Net_DebugMode_Logs) > 1000000) {
-    Net_DebugMode_Logs = TL::SubString(Net_DebugMode_Logs, 0, 1000000);
+	Net_DebugMode_Logs = TL::SubString(Net_DebugMode_Logs, 0, 1000000);
 }
-
 
 declare netwrite Integer Net_DebugMode_Logs_Serial for Teams[0];
 Net_DebugMode_Logs_Serial += 1;
 ***
 
 Text GetManialink() {
-    return """
-    <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-    <manialink name="DebugMode_UI" version="3">
-        <stylesheet>
-            <style class="text" halign="left" textsize="1" textcolor="FFFFFFFF"/>
-            <style class="entry" halign="left" textsize="1" textcolor="FFFFFFFF" valign="center2" focusareacolor1="000000f0" focusareacolor2="000000f0"/>
-            <style class="title" textsize=2 valign="center2" textfont="GameFontSemiBold" textcolor="FFFFFFFF"/>
-            <style class="leftpanel-text" halign="left" valign="center2" textsize="1" textcolor="FFFFFFFF"/>
-            <style class="rightpanel-text-button" halign="center" valign="center2" textsize="1" textcolor="FFFFFFFF"/>
-        </stylesheet>
-        <framemodel id="framemodel-tooltip">
-            <quad size="4 4" bgcolor="FFF" style="UICommon64_1" substyle="Info_light" scriptevents="1"/>
-        </framemodel>
-        <frame id="frame-global" z-index="50">
-            <frame id="frame-displaybutton" pos="-160 -60" z-index="-10">
-                <quad id="quad-displaybutton" class="button" pos="0 0" size="5 5" z-index="-1" bgcolor="000" opacity="0.5" scriptevents="1"/>
-                <quad pos="0 0" size="5 5" style="UICommon64_1" substyle="Debug_light"/>
-            </frame>
-            <frame id="frame-tooltip" z-index="10" hidden=1>
-                <quad id="quad-tooltip" pos="0 0" z-index="-1" size="30 5" bgcolor="000" opacity="0.7"/>
-                <label id="label-tooltip" class="text" pos="1 -1" size="30 5" autonewline="1"/>
-            </frame>
-            <frame id="frame-mainui" pos="-100 65" hidden="1">
-                <frame>
-                    <frame id="frame-topbar" z-index="-2">
-                        <quad id="quad-topbar" pos="0 0" z-index="-1" size="100 5" bgcolor="000" scriptevents="1"/>
-                        <frame id="frame-topbar-title">
-                            <quad pos="0 0" size="5 5" style="UICommon64_1" substyle="Debug_light"/>
-                            <label class="title" pos="5 -2.6" size="25 3" text="DebugMode"/>
-                        </frame>
-                        <frame id="frame-topbar-buttons" pos="100 0">
-                            <quad id="quad-topbar-maximize" pos="-4 -0.5" z-index="3" size="4 4" style="UICommon64_1" substyle="MaximizeMinimize_light" halign="right" scriptevents="1"/>
-                            <quad id="quad-topbar-quit" pos="-0.5 -0.5" z-index="3" size="4 4" style="UICommon64_1" substyle="Cross_light" halign="right" scriptevents="1"/>
-                        </frame>
-                    </frame>
-                    <quad id="quad-background" pos="0 0" z-index="-3" size="100 60" bgcolor="111" opacity="0.9"/>
-                    <frame>
-                        <quad id="quad-border-bottom" class="border" pos="0 -59.5" size="100 0.5" bgcolor="333" opacity="0" scriptevents="1"/>
-                        <quad id="quad-border-right" class="border" pos="99.5 0" size="0.5 60" bgcolor="333" opacity="0" scriptevents="1"/>
-                        <quad id="quad-corner-bottomright" class="border" pos="98 -58" size="2 2" z-index=1 bgcolor="333" opacity="0" scriptevents="1"/>
-                    </frame>
-                    <frame pos="1 -6">
-                        <frame id="frame-leftpanel">
-                            <quad id="quad-leftpanel-separator" pos="24.7 0" z-index="-1" size="0.3 53" bgcolor="fff"/>
-                            <frame>
-                                <frame pos="0 0">
-                                    <quad id="quad-leftpanel-logs" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0.2" scriptevents="1"/>
-                                    <label class="leftpanel-text" size="24 3" pos="0 -2" text="Log return"/>
-                                </frame>
-                                <frame pos="0 -4">
-                                    <quad id="quad-leftpanel-bot" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
-                                    <label class="leftpanel-text" size="24 3" pos="0 -2" text="Bot Management"/>
-                                </frame>
-                                <frame pos="0 -8">
-                                    <quad id="quad-leftpanel-playerscontrol" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
-                                    <label class="leftpanel-text" size="24 3" pos="0 -2" text="Players control"/>
-                                </frame>
-                                <frame pos="0 -12">
-                                    <quad id="quad-leftpanel-customevent" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
-                                    <label class="leftpanel-text" size="24 3" pos="0 -2" text="Custom Event Builder"/>
-                                </frame>
-                                <frame pos="0 -16">
-                                    <quad id="quad-leftpanel-varinsp" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
-                                    <label class="leftpanel-text" size="24 3" pos="0 -2" text="Variable Inspector"/>
-                                </frame>
-                            </frame>
-                        </frame>
-                        <frame id="frame-rightpanel" pos="26 0">
-                            <frame id="frame-rightpanel-logs">
-                                <frame>
-                                    <quad id="quad-clearlogs" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="14 3" pos="7.5 -2" text="Clear logs"/>
-                                    <frameinstance pos="16 0" modelid="framemodel-tooltip" tooltip="The time displayed is UTC for a technical reason"/>
-                                </frame>
-                                <textedit id="textedit-logs" textformat="Script" class="text" pos="0 -5" size="72 48" autonewline="1" focusareacolor1="000000f0" focusareacolor2="000000f0"/>
-                            </frame>
-                            <frame id="frame-rightpanel-bot" hidden=1>
-                                <frame>
-                                    <label class="text" size="13 3" pos="0 -1" text="Bot Name:"/>
-                                    <entry id="entry-bots-name" class="entry" pos="0 -6" size="72 4" />
-                                </frame>
-                                <frame pos="0 -10">
-                                    <label class="text" size="16 3" pos="0 -1" text="Bot Team Id:"/>
-                                    <frameinstance pos="16 0" modelid="framemodel-tooltip" tooltip="TeamId is ignored for deletion"/>
-                                    <entry id="entry-bots-teamid" class="entry" pos="0 -6" size="72 4"/>
-                                </frame>
-                                <frame pos="0 -20">
-                                    <quad id="quad-bots-delbots-50" class="button" pos="0 0" size="6 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="5 3" pos="3 -2" text="-50"/>
-                                </frame>
-                                <frame pos="7 -20">
-                                    <quad id="quad-bots-delbots-10" class="button" pos="0 0" size="6 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="5 3" pos="3 -2" text="-10"/>
-                                </frame>
-                                <frame pos="14 -20">
-                                    <quad id="quad-bots-delbots-1" class="button" pos="0 0" size="5 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="4 3" pos="2.5 -2" text="-1"/>
-                                </frame>
-                                <frame pos="20 -20">
-                                    <quad id="quad-bots-delbots-all" class="button" pos="0 0" size="7 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="6 3" pos="3.5 -2" text="Clear"/>
-                                </frame>
-                                <frame pos="28 -20">
-                                    <quad id="quad-bots-addbots-1" class="button" pos="0 0" size="5 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="4 3" pos="2.5 -2" text="+1"/>
-                                </frame>
-                                <frame pos="34 -20">
-                                    <quad id="quad-bots-addbots-10" class="button" pos="0 0" size="6 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="5 3" pos="3 -2" text="+10"/>
-                                </frame>
-                                <frame pos="41 -20">
-                                    <quad id="quad-bots-addbots-50" class="button" pos="0 0" size="6 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="5 3" pos="3 -2" text="+50"/>
-                                </frame>
-                            </frame>
-                            <frame id="frame-rightpanel-playerscontrol" hidden=1>
-                                <frame>
-                                    <label class="text" size="8 3" pos="0 -1" text="Speed:"/>
-                                    <frameinstance pos="8 0" modelid="framemodel-tooltip" tooltip="Set an empty value to reset, a single value to set it, or comma separated 2 values to select a random value between the two"/>
-                                    <entry id="entry-playerscontrol-speed" class="entry" pos="0 -6" z-index="0" size="72 4"/>
-                                </frame>
-                                <frame pos="0 -10">
-                                    <label class="text" size="8 3" pos="0 -1" text="Steer:"/>
-                                    <frameinstance pos="8 0" modelid="framemodel-tooltip" tooltip="Set single value between -1. and 1. to set it, or comma separated 2 values to select a random value between the two"/>
-                                    <entry id="entry-playerscontrol-steer" class="entry" pos="0 -6" size="72 4"/>
-                                </frame>
-                                <frame pos="0 -20">
-                                    <label class="text" size="20 3" pos="0 -1" text="Send config to:"/>
-                                    <frameinstance pos="20 0" modelid="framemodel-tooltip" tooltip="Left click to send the values, right click to stop controlling the target(s)"/>
-                                    <frame pos="0 -5">
-                                        <quad id="quad-playerscontrol-player-visible" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Visible"/>
-                                    </frame>
-                                    <frame pos="16 -5">
-                                        <quad id="quad-playerscontrol-player-allbots" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="All Bots"/>
-                                    </frame>
-                                    <frame pos="32 -5">
-                                        <quad id="quad-playerscontrol-player-allplayers" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="All Players"/>
-                                    </frame>
-                                </frame>
-                            </frame>
-                            <frame id="frame-rightpanel-customevent" hidden=1>
-                                <frame>
-                                    <label class="text" size="30 3" pos="0 -1" text="Custom Event Name:"/>
-                                    <entry id="entry-customevent-name" class="entry" pos="0 -6" size="72 4" />
-                                </frame>
-                                <frame pos="0 -10">
-                                    <label class="text" size="30 3" pos="0 -1" text="Custom Event Data:"/>
-                                    <frameinstance pos="25 0" modelid="framemodel-tooltip" tooltip="Use commas to separate data"/>
-                                    <entry id="entry-customevent-data" class="entry" pos="0 -6" size="72 4" />
-                                </frame>
-                                <frame pos="0 -20">
-                                    <quad id="quad-sendcustomevent" class="button" pos="0 0" size="25 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="23 3" pos="12.5 -2" text="Send Custom Event"/>
-                                </frame>
-                            </frame>
-                            <frame id="frame-rightpanel-varinsp" hidden=1>
-                                <frame pos="0 0">
-                                    <quad id="quad-varinsp-forvars-dumpthis" class="button" pos="0 0" size="47 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="46 3" pos="23.5 -2" text="Dump This &quot;For&quot; variables"/>
-                                </frame>
-                                <frame pos="0 -5">
-                                    <quad id="quad-varinsp-forvars-dumpteams0" class="button" pos="0 0" size="47 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="46 3" pos="23.5 -2" text="Dump Teams[0] &quot;For&quot; variables"/>
-                                </frame>
-                                <frame pos="0 -10">
-                                    <quad id="quad-varinsp-forvars-dumpuiall" class="button" pos="0 0" size="47 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                    <label class="rightpanel-text-button" size="46 3" pos="23.5 -2" text="Dump UIAll &quot;For&quot; variables"/>
-                                </frame>
-                                <frame pos="0 -15">
-                                    <label class="text" size="10 3" pos="0 -1" text="Player:"/>
-                                    <frameinstance pos="10 0" modelid="framemodel-tooltip" tooltip="Use login, Account Id or Nickname"/>
-                                    <label class="text" size="10 3" pos="18 -1" text="Auto fill:"/>
-                                    <frame pos="29 0">
-                                        <quad id="quad-varinsp-forvars-autofill-me" class="button" pos="0 0" size="7 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="6 3" pos="3.5 -2" text="Me"/>
-                                    </frame>
-                                    <frame pos="37 0">
-                                        <quad id="quad-varinsp-forvars-autofill-visible" class="button" pos="0 0" size="10 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="9 3" pos="5 -2" text="Visible"/>
-                                    </frame>
-                                    <entry id="entry-varinsp-player" class="entry" pos="0 -6" size="72 4"/>
-                                </frame>
-                                <frame pos="0 -25">
-                                    <label class="text" size="10 3" pos="0 -1" text="ForVars:"/>
-                                    <frame pos="0 -5">
-                                        <quad id="quad-varinsp-forvars-player-player" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Player"/>
-                                    </frame>
-                                    <frame pos="16 -5">
-                                        <quad id="quad-varinsp-forvars-player-score" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Score"/>
-                                    </frame>
-                                    <frame pos="32 -5">
-                                        <quad id="quad-varinsp-forvars-player-ui" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="UI"/>
-                                    </frame>
-                                </frame>
-                                <frame pos="0 -35">
-                                    <label class="text" size="10 3" pos="0 -1" text="Struct:"/>
-                                    <frame pos="0 -5">
-                                        <quad id="quad-varinsp-struct-player-player" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Player"/>
-                                    </frame>
-                                    <frame pos="16 -5">
-                                        <quad id="quad-varinsp-struct-player-score" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Score"/>
-                                    </frame>
-                                    <frame pos="32 -5">
-                                        <quad id="quad-varinsp-struct-player-ui" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
-                                        <label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="UI"/>
-                                    </frame>
-                                </frame>
-                            </frame>
-                        </frame>
-                    </frame>
-                    <!--<frameinstance pos="20 -10" modelid="framemodel-tooltip" tooltip="OMG This is a very very long tooltip, so important"/>-->
-                </frame>
-            </frame>
-        </frame>
-        <script><!--
-            #Include "TextLib" as TL
-            #Include "MathLib" as ML
-            // #RequireContext CSmMlScriptIngame
+	return """
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<manialink name="DebugMode_UI" version="3">
+	<stylesheet>
+		<style class="text" halign="left" textsize="1" textcolor="FFFFFFFF"/>
+		<style class="entry" halign="left" textsize="1" textcolor="FFFFFFFF" valign="center2" focusareacolor1="000000f0" focusareacolor2="000000f0"/>
+		<style class="title" textsize=2 valign="center2" textfont="GameFontSemiBold" textcolor="FFFFFFFF"/>
+		<style class="leftpanel-text" halign="left" valign="center2" textsize="1" textcolor="FFFFFFFF"/>
+		<style class="rightpanel-text-button" halign="center" valign="center2" textsize="1" textcolor="FFFFFFFF"/>
+	</stylesheet>
+	<framemodel id="framemodel-tooltip">
+		<quad size="4 4" bgcolor="FFF" style="UICommon64_1" substyle="Info_light" scriptevents="1"/>
+	</framemodel>
+	<frame id="frame-global" z-index="100">
+		<frame id="frame-displaybutton" pos="-160 -60" z-index="-10">
+			<quad id="quad-displaybutton" class="button" pos="0 0" size="5 5" z-index="-1" bgcolor="000" opacity="0.5" scriptevents="1"/>
+			<quad pos="0 0" size="5 5" style="UICommon64_1" substyle="Debug_light"/>
+		</frame>
+		<frame id="frame-tooltip" z-index="10" hidden=1>
+			<quad id="quad-tooltip" pos="0 0" z-index="-1" size="30 5" bgcolor="000" opacity="0.7"/>
+			<label id="label-tooltip" class="text" pos="1 -1" size="30 5" autonewline="1"/>
+		</frame>
+		<frame id="frame-mainui" pos="-100 65" hidden="1">
+			<frame>
+				<frame id="frame-topbar" z-index="-2">
+					<quad id="quad-topbar" pos="0 0" z-index="-1" size="100 5" bgcolor="000" scriptevents="1"/>
+					<frame id="frame-topbar-title">
+						<quad pos="0 0" size="5 5" style="UICommon64_1" substyle="Debug_light"/>
+						<label class="title" pos="5 -2.6" size="25 3" text="DebugMode"/>
+					</frame>
+					<frame id="frame-topbar-buttons" pos="100 0">
+						<quad id="quad-topbar-maximize" pos="-4 -0.5" z-index="3" size="4 4" style="UICommon64_1" substyle="MaximizeMinimize_light" halign="right" scriptevents="1"/>
+						<quad id="quad-topbar-quit" pos="-0.5 -0.5" z-index="3" size="4 4" style="UICommon64_1" substyle="Cross_light" halign="right" scriptevents="1"/>
+					</frame>
+				</frame>
+				<quad id="quad-background" pos="0 0" z-index="-3" size="100 60" bgcolor="111" opacity="0.9"/>
+				<frame>
+					<quad id="quad-border-bottom" class="border" pos="0 -59.5" size="100 0.5" bgcolor="333" opacity="0" scriptevents="1"/>
+					<quad id="quad-border-right" class="border" pos="99.5 0" size="0.5 60" bgcolor="333" opacity="0" scriptevents="1"/>
+					<quad id="quad-corner-bottomright" class="border" pos="98 -58" size="2 2" z-index=1 bgcolor="333" opacity="0" scriptevents="1"/>
+				</frame>
+				<frame pos="1 -6">
+					<frame id="frame-leftpanel">
+						<quad id="quad-leftpanel-separator" pos="24.7 0" z-index="-1" size="0.3 53" bgcolor="fff"/>
+						<frame>
+							<frame pos="0 0">
+								<quad id="quad-leftpanel-logs" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
+								<label class="leftpanel-text" size="24 3" pos="0 -2" text="Log return"/>
+							</frame>
+							<frame pos="0 -4">
+								<quad id="quad-leftpanel-bot" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
+								<label class="leftpanel-text" size="24 3" pos="0 -2" text="Bot Management"/>
+							</frame>
+							<frame pos="0 -8">
+								<quad id="quad-leftpanel-playerscontrol" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
+								<label class="leftpanel-text" size="24 3" pos="0 -2" text="Players control"/>
+							</frame>
+							<frame pos="0 -12">
+								<quad id="quad-leftpanel-customevent" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
+								<label class="leftpanel-text" size="24 3" pos="0 -2" text="Custom Event Builder"/>
+							</frame>
+							<frame pos="0 -16">
+								<quad id="quad-leftpanel-varinsp" class="leftpanel-button" size="26 4" pos="-1 0" bgcolor="fff" opacity="0" scriptevents="1"/>
+								<label class="leftpanel-text" size="24 3" pos="0 -2" text="Variable Inspector"/>
+							</frame>
+						</frame>
+					</frame>
 
-            Real ComputeBackgroundSize(CMlLabel _Label, Text _Value, Real _MaxLineWidth) {
-                declare Real SpaceSize = _Label.ComputeWidth(" ");
 
-                declare Real MaxLineSize = 0.;
-                declare Real CurrentLineSize = SpaceSize;
-                declare Text[] Words = TL::Split("-", TL::RegexReplace("[\\s-]", _Value, "g", "-"));
-                foreach (Word in Words) {
-                    declare Real CurrentWordSize = _Label.ComputeWidth(Word) + SpaceSize;
-                    if (CurrentLineSize + CurrentWordSize < _MaxLineWidth) {
-                        CurrentLineSize += CurrentWordSize;
-                    } else {
-                        CurrentLineSize = CurrentWordSize;
-                    }
-                    if (CurrentLineSize > MaxLineSize) MaxLineSize = CurrentLineSize;
-                }
-                return MaxLineSize;
-            }
+					<frame id="frame-rightpanel" pos="26 0">
 
-            Boolean MaximizeMinimizeWindow(CMlQuad _MaximizeButton, CMlFrame _MainUI, Vec2 _MinimizedPos, CMlQuad _Background, Vec2 _MinimizedSize) {
-                _MaximizeButton.StyleSelected = !_MaximizeButton.StyleSelected;
 
-                AnimMgr.Flush(_MainUI);
-                AnimMgr.Flush(_Background);
+						<frame id="frame-rightpanel-logs" hidden=1>
+							<frame>
+								<quad id="quad-clearlogs" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="14 3" pos="7.5 -2" text="Clear logs"/>
+								<frameinstance pos="16 0" modelid="framemodel-tooltip" tooltip="The time displayed is UTC for a technical reason"/>
+							</frame>
+							<textedit id="textedit-logs" textformat="Script" class="text" pos="0 -5" size="72 48" autonewline="1" focusareacolor1="000000f0" focusareacolor2="000000f0"/>
+						</frame>
+						<frame id="frame-rightpanel-bot" hidden=1>
+							<frame>
+								<label class="text" size="13 3" pos="0 -1" text="Bot Name:"/>
+								<entry id="entry-bots-name" class="entry" pos="0 -6" size="72 4" />
+							</frame>
+							<frame pos="0 -10">
+								<label class="text" size="16 3" pos="0 -1" text="Bot Team Id:"/>
+								<frameinstance pos="16 0" modelid="framemodel-tooltip" tooltip="TeamId is ignored for deletion"/>
+								<entry id="entry-bots-teamid" class="entry" pos="0 -6" size="72 4"/>
+							</frame>
+							<frame pos="0 -20">
+								<quad id="quad-bots-delbots-50" class="button" pos="0 0" size="6 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="5 3" pos="3 -2" text="-50"/>
+							</frame>
+							<frame pos="7 -20">
+								<quad id="quad-bots-delbots-10" class="button" pos="0 0" size="6 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="5 3" pos="3 -2" text="-10"/>
+							</frame>
+							<frame pos="14 -20">
+								<quad id="quad-bots-delbots-1" class="button" pos="0 0" size="5 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="4 3" pos="2.5 -2" text="-1"/>
+							</frame>
+							<frame pos="20 -20">
+								<quad id="quad-bots-delbots-all" class="button" pos="0 0" size="7 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="6 3" pos="3.5 -2" text="Clear"/>
+							</frame>
+							<frame pos="28 -20">
+								<quad id="quad-bots-addbots-1" class="button" pos="0 0" size="5 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="4 3" pos="2.5 -2" text="+1"/>
+							</frame>
+							<frame pos="34 -20">
+								<quad id="quad-bots-addbots-10" class="button" pos="0 0" size="6 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="5 3" pos="3 -2" text="+10"/>
+							</frame>
+							<frame pos="41 -20">
+								<quad id="quad-bots-addbots-50" class="button" pos="0 0" size="6 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="5 3" pos="3 -2" text="+50"/>
+							</frame>
+						</frame>
 
-                if (_MaximizeButton.StyleSelected) {
-                    AnimMgr.Add(_MainUI, "<frame pos=\"-160 85\" />", Now, 250, CAnimManager::EAnimManagerEasing::CubicOut);
-                    AnimMgr.Add(_Background, "<quad size=\"320 175\" />", Now, 250, CAnimManager::EAnimManagerEasing::CubicOut);
-                } else {
-                    AnimMgr.Add(_MainUI, "<frame pos=\"" ^ _MinimizedPos.X ^ " " ^ _MinimizedPos.Y ^ "\" />", Now, 250, CAnimManager::EAnimManagerEasing::CubicOut);
-                    AnimMgr.Add(_Background, "<quad size=\"" ^ _MinimizedSize.X ^ " " ^ _MinimizedSize.Y ^ "\" />", Now, 250, CAnimManager::EAnimManagerEasing::CubicOut);
-                }
-                return _MaximizeButton.StyleSelected;
-            }
 
-            Void SwitchToTab(Text _CurrentTab, Text _NexTab) {
-                declare CMlQuad Quad = (Page.GetFirstChild(_CurrentTab) as CMlQuad);
-                Quad.Opacity = 0.;
-                Quad = (Page.GetFirstChild(_NexTab) as CMlQuad);
-                Quad.Opacity = .2;
+						<frame id="frame-rightpanel-playerscontrol" hidden=1>
+							<frame>
+								<label class="text" size="8 3" pos="0 -1" text="Speed:"/>
+								<frameinstance pos="8 0" modelid="framemodel-tooltip" tooltip="Set an empty value to reset, a single value to set it, or comma separated 2 values to select a random value between the two"/>
+								<entry id="entry-playerscontrol-speed" class="entry" pos="0 -6" z-index="0" size="72 4"/>
+							</frame>
+							<frame pos="0 -10">
+								<label class="text" size="8 3" pos="0 -1" text="Steer:"/>
+								<frameinstance pos="8 0" modelid="framemodel-tooltip" tooltip="Set single value between -1. and 1. to set it, or comma separated 2 values to select a random value between the two"/>
+								<entry id="entry-playerscontrol-steer" class="entry" pos="0 -6" size="72 4"/>
+							</frame>
+							<frame pos="0 -20">
+								<label class="text" size="20 3" pos="0 -1" text="Send config to:"/>
+								<frameinstance pos="20 0" modelid="framemodel-tooltip" tooltip="Left click to send the values, right click to stop controlling the target(s)"/>
+								<frame pos="0 -5">
+									<quad id="quad-playerscontrol-player-visible" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Visible"/>
+								</frame>
+								<frame pos="16 -5">
+									<quad id="quad-playerscontrol-player-allbots" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="All Bots"/>
+								</frame>
+								<frame pos="32 -5">
+									<quad id="quad-playerscontrol-player-allplayers" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="All Players"/>
+								</frame>
+							</frame>
+						</frame>
 
-                declare CMlFrame Frame = (Page.GetFirstChild("frame-rightpanel-" ^ TL::Split("-", _CurrentTab)[2]) as CMlFrame);
-                Frame.Visible = False;
-                Frame = (Page.GetFirstChild("frame-rightpanel-" ^ TL::Split("-", _NexTab)[2]) as CMlFrame);
-                Frame.Visible = True;
-            }
 
-            main() {
-                declare CMlFrame Frame_MainUI = (Page.GetFirstChild("frame-mainui") as CMlFrame);
+						<frame id="frame-rightpanel-customevent" hidden=1>
+							<frame>
+								<label class="text" size="30 3" pos="0 -1" text="Custom Event Name:"/>
+								<entry id="entry-customevent-name" class="entry" pos="0 -6" size="72 4" />
+							</frame>
+							<frame pos="0 -10">
+								<label class="text" size="30 3" pos="0 -1" text="Custom Event Data:"/>
+								<frameinstance pos="25 0" modelid="framemodel-tooltip" tooltip="Use commas to separate data"/>
+								<entry id="entry-customevent-data" class="entry" pos="0 -6" size="72 4" />
+							</frame>
+							<frame pos="0 -20">
+								<quad id="quad-sendcustomevent" class="button" pos="0 0" size="25 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="23 3" pos="12.5 -2" text="Send Custom Event"/>
+							</frame>
+						</frame>
 
-                declare CMlFrame Frame_Tooltip = (Page.GetFirstChild("frame-tooltip") as CMlFrame);
-                declare CMlQuad Quad_Tooltip = (Page.GetFirstChild("quad-tooltip") as CMlQuad);
-                declare CMlLabel Label_Tooltip = (Page.GetFirstChild("label-tooltip") as CMlLabel);
 
-                declare CMlQuad Quad_Topbar = (Page.GetFirstChild("quad-topbar") as CMlQuad);
-                declare CMlFrame Frame_Topbar_Buttons = (Page.GetFirstChild("frame-topbar-buttons") as CMlFrame);
-                declare CMlQuad Quad_Topbar_Maximize = (Page.GetFirstChild("quad-topbar-maximize") as CMlQuad);
+						<frame id="frame-rightpanel-varinsp" hidden=1>
+							<frame pos="0 0">
+								<quad id="quad-varinsp-forvars-dumpthis" class="button" pos="0 0" size="47 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="46 3" pos="23.5 -2" text="Dump This &quot;For&quot; variables"/>
+							</frame>
+							<frame pos="0 -5">
+								<quad id="quad-varinsp-forvars-dumpteams0" class="button" pos="0 0" size="47 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="46 3" pos="23.5 -2" text="Dump Teams[0] &quot;For&quot; variables"/>
+							</frame>
+							<frame pos="0 -10">
+								<quad id="quad-varinsp-forvars-dumpuiall" class="button" pos="0 0" size="47 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+								<label class="rightpanel-text-button" size="46 3" pos="23.5 -2" text="Dump UIAll &quot;For&quot; variables"/>
+							</frame>
+							<frame pos="0 -15">
+								<label class="text" size="10 3" pos="0 -1" text="Player:"/>
+								<frameinstance pos="10 0" modelid="framemodel-tooltip" tooltip="Use login, Account Id or Nickname"/>
+								<label class="text" size="10 3" pos="18 -1" text="Auto fill:"/>
+								<frame pos="29 0">
+									<quad id="quad-varinsp-forvars-autofill-me" class="button" pos="0 0" size="7 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="6 3" pos="3.5 -2" text="Me"/>
+								</frame>
+								<frame pos="37 0">
+									<quad id="quad-varinsp-forvars-autofill-visible" class="button" pos="0 0" size="10 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="9 3" pos="5 -2" text="Visible"/>
+								</frame>
+								<entry id="entry-varinsp-player" class="entry" pos="0 -6" size="72 4"/>
+							</frame>
+							<frame pos="0 -25">
+								<label class="text" size="10 3" pos="0 -1" text="ForVars:"/>
+								<frame pos="0 -5">
+									<quad id="quad-varinsp-forvars-player-player" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Player"/>
+								</frame>
+								<frame pos="16 -5">
+									<quad id="quad-varinsp-forvars-player-score" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Score"/>
+								</frame>
+								<frame pos="32 -5">
+									<quad id="quad-varinsp-forvars-player-ui" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="UI"/>
+								</frame>
+							</frame>
+							<frame pos="0 -35">
+								<label class="text" size="10 3" pos="0 -1" text="Struct:"/>
+								<frame pos="0 -5">
+									<quad id="quad-varinsp-struct-player-player" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Player"/>
+								</frame>
+								<frame pos="16 -5">
+									<quad id="quad-varinsp-struct-player-score" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="Score"/>
+								</frame>
+								<frame pos="32 -5">
+									<quad id="quad-varinsp-struct-player-ui" class="button" pos="0 0" size="15 4" z-index="-1" bgcolor="666" opacity="0.5" scriptevents="1"/>
+									<label class="rightpanel-text-button" size="0 3" pos="7.5 -2" text="UI"/>
+								</frame>
+							</frame>
+						</frame>
+					</frame>
+				</frame>
+			</frame>
+		</frame>
+	</frame>
+<script><!--
+#Include "TextLib" as TL
+#Include "MathLib" as ML
+// #RequireContext CSmMlScriptIngame
 
-                declare CMlQuad Quad_Background = (Page.GetFirstChild("quad-background") as CMlQuad);
+Real ComputeBackgroundSize(CMlLabel _Label, Text _Value, Real _MaxLineWidth) {
+	declare Real SpaceSize = _Label.ComputeWidth(" ");
 
-                declare CMlQuad Quad_Border_Bottom = (Page.GetFirstChild("quad-border-bottom") as CMlQuad);
-                declare CMlQuad Quad_Border_Right = (Page.GetFirstChild("quad-border-right") as CMlQuad);
-                declare CMlQuad Quad_Corner_BottomRight = (Page.GetFirstChild("quad-corner-bottomright") as CMlQuad);
+	declare Real MaxLineSize = 0.;
+	declare Real CurrentLineSize = SpaceSize;
+	declare Text[] Words = TL::Split("-", TL::RegexReplace("[\\s-]", _Value, "g", "-"));
+	foreach (Word in Words) {
+		declare Real CurrentWordSize = _Label.ComputeWidth(Word) + SpaceSize;
+		if (CurrentLineSize + CurrentWordSize < _MaxLineWidth) {
+			CurrentLineSize += CurrentWordSize;
+		} else {
+			CurrentLineSize = CurrentWordSize;
+		}
+		if (CurrentLineSize > MaxLineSize) MaxLineSize = CurrentLineSize;
+	}
+	return MaxLineSize;
+}
 
-                declare CMlQuad Quad_LeftPanel_Separator = (Page.GetFirstChild("quad-leftpanel-separator") as CMlQuad);
+Boolean MaximizeMinimizeWindow(CMlQuad _MaximizeButton, CMlFrame _MainUI, Vec2 _MinimizedPos, CMlQuad _Background, Vec2 _MinimizedSize) {
+	_MaximizeButton.StyleSelected = !_MaximizeButton.StyleSelected;
 
-                declare CMlTextEdit TextEdit_Logs = (Page.GetFirstChild("textedit-logs") as CMlTextEdit);
+	AnimMgr.Flush(_MainUI);
+	AnimMgr.Flush(_Background);
 
-                declare CMlEntry Entry_Bots_Name = (Page.GetFirstChild("entry-bots-name") as CMlEntry);
-                declare CMlEntry Entry_Bots_TeamId = (Page.GetFirstChild("entry-bots-teamid") as CMlEntry);
+	if (_MaximizeButton.StyleSelected) {
+		AnimMgr.Add(_MainUI, "<frame pos=\"-160 85\" />", Now, 250, CAnimManager::EAnimManagerEasing::CubicOut);
+		AnimMgr.Add(_Background, "<quad size=\"320 175\" />", Now, 250, CAnimManager::EAnimManagerEasing::CubicOut);
+	} else {
+		AnimMgr.Add(_MainUI, "<frame pos=\"" ^ _MinimizedPos.X ^ " " ^ _MinimizedPos.Y ^ "\" />", Now, 250, CAnimManager::EAnimManagerEasing::CubicOut);
+		AnimMgr.Add(_Background, "<quad size=\"" ^ _MinimizedSize.X ^ " " ^ _MinimizedSize.Y ^ "\" />", Now, 250, CAnimManager::EAnimManagerEasing::CubicOut);
+	}
+	return _MaximizeButton.StyleSelected;
+}
 
-                declare CMlEntry Entry_PlayersControl_Speed = (Page.GetFirstChild("entry-playerscontrol-speed") as CMlEntry);
-                declare CMlEntry Entry_PlayersControl_Steer = (Page.GetFirstChild("entry-playerscontrol-steer") as CMlEntry);
+Void SwitchToTab(Text _CurrentTab, Text _NexTab) {
+	declare CMlQuad Quad;
+	declare CMlFrame Frame;
 
-                declare CMlEntry Entry_CustomEvent_Name = (Page.GetFirstChild("entry-customevent-name") as CMlEntry);
-                declare CMlEntry Entry_CustomEvent_Data = (Page.GetFirstChild("entry-customevent-data") as CMlEntry);
+	if (_CurrentTab != "") {
+		Quad <=> (Page.GetFirstChild(_CurrentTab) as CMlQuad);
+		if (Quad != Null) Quad.Opacity = 0.;
+		Frame <=> (Page.GetFirstChild("frame-rightpanel-" ^ TL::Split("-", _CurrentTab)[2]) as CMlFrame);
+		if (Frame != Null) Frame.Visible = False;
+	}
 
-                declare CMlEntry Entry_VarInsp_Players = (Page.GetFirstChild("entry-varinsp-player") as CMlEntry);
+	Quad <=> (Page.GetFirstChild(_NexTab) as CMlQuad);
+	if (Quad != Null) Quad.Opacity = .2;
+	Frame <=> (Page.GetFirstChild("frame-rightpanel-" ^ TL::Split("-", _NexTab)[2]) as CMlFrame);
+	if (Frame != Null) Frame.Visible = True;
+}
 
-                wait(InputPlayer != Null);
-                declare persistent Text P_DebugMode_CustomEvent_Name for InputPlayer.User;
-                Entry_CustomEvent_Name.Value = P_DebugMode_CustomEvent_Name;
-                declare persistent Text P_DebugMode_CustomEvent_Data for InputPlayer.User;
-                Entry_CustomEvent_Data.Value = P_DebugMode_CustomEvent_Data;
-                declare persistent Text P_DebugMode_VarInsp_Players for InputPlayer.User;
-                Entry_VarInsp_Players.Value = P_DebugMode_VarInsp_Players;
-                declare persistent Text P_DebugMode_Bots_Name for InputPlayer.User;
-                Entry_Bots_Name.Value = P_DebugMode_Bots_Name;
-                declare persistent Text P_DebugMode_Bots_TeamId for InputPlayer.User;
-                Entry_Bots_TeamId.Value = P_DebugMode_Bots_TeamId;
-                declare persistent Text P_DebugMode_PlayersControl_Speed for InputPlayer.User;
-                Entry_PlayersControl_Speed.Value = P_DebugMode_PlayersControl_Speed;
-                declare persistent Text P_DebugMode_PlayersControl_Steer for InputPlayer.User;
-                Entry_PlayersControl_Steer.Value = P_DebugMode_PlayersControl_Steer;
+main() {
+	declare CMlFrame Frame_MainUI = (Page.GetFirstChild("frame-mainui") as CMlFrame);
 
-                declare netread Text Net_DebugMode_Logs for Teams[0];
-                declare netread Integer Net_DebugMode_Logs_Serial for Teams[0];
-                declare Integer Last_Logs_Serial;
+	declare CMlFrame Frame_Tooltip = (Page.GetFirstChild("frame-tooltip") as CMlFrame);
+	declare CMlQuad Quad_Tooltip = (Page.GetFirstChild("quad-tooltip") as CMlQuad);
+	declare CMlLabel Label_Tooltip = (Page.GetFirstChild("label-tooltip") as CMlLabel);
 
-                declare Boolean Last_DragAndDrop_State = False;
-                declare Vec2 Last_DragAndDrop_Offset;
+	declare CMlQuad Quad_Topbar = (Page.GetFirstChild("quad-topbar") as CMlQuad);
+	declare CMlFrame Frame_Topbar_Buttons = (Page.GetFirstChild("frame-topbar-buttons") as CMlFrame);
+	declare CMlQuad Quad_Topbar_Maximize = (Page.GetFirstChild("quad-topbar-maximize") as CMlQuad);
 
-                declare Text[] Last_BorderResize_Side;
-                declare Vec2 Last_BorderResize_Offset;
-                declare Real Last_BorderResize_SizeOffset;
+	declare CMlQuad Quad_Background = (Page.GetFirstChild("quad-background") as CMlQuad);
 
-                declare Boolean Last_IsMaximized;
-                declare Vec2 Last_Minimized_Size = Quad_Background.Size;
-                declare Vec2 Last_Minimized_Pos = <Frame_MainUI.RelativePosition_V3.X, Frame_MainUI.RelativePosition_V3.Y>;
+	declare CMlQuad Quad_Border_Bottom = (Page.GetFirstChild("quad-border-bottom") as CMlQuad);
+	declare CMlQuad Quad_Border_Right = (Page.GetFirstChild("quad-border-right") as CMlQuad);
+	declare CMlQuad Quad_Corner_BottomRight = (Page.GetFirstChild("quad-corner-bottomright") as CMlQuad);
 
-                declare Text Last_TabSelected = "quad-leftpanel-logs";
+	declare CMlQuad Quad_LeftPanel_Separator = (Page.GetFirstChild("quad-leftpanel-separator") as CMlQuad);
 
-                while (True) {
-                    yield;
-                    foreach (Event in PendingEvents) {
-                        switch (Event.Type) {
-                            case CMlScriptEvent::Type::MouseClick: {
-                                switch (Event.Control.ControlId) {
-                                    case "quad-displaybutton": {
-                                        Frame_MainUI.Visible = !Frame_MainUI.Visible;
-                                    }
-                                    case "quad-topbar-quit": {
-                                        Frame_MainUI.Visible = False;
-                                    }
-                                    case "quad-topbar-maximize": {
-                                        Last_IsMaximized = MaximizeMinimizeWindow(Quad_Topbar_Maximize, Frame_MainUI, Last_Minimized_Pos, Quad_Background, Last_Minimized_Size);
-                                    }
-                                    case "quad-topbar": {
-                                        if (!Last_IsMaximized) {
-                                            Last_DragAndDrop_State = True;
-                                            Last_DragAndDrop_Offset = <Event.Control.Parent.Parent.Parent.RelativePosition_V3.X - MouseX, Event.Control.Parent.Parent.Parent.RelativePosition_V3.Y - MouseY>;
-                                        }
-                                    }
-                                    case "quad-border-bottom": {
-                                        if (!Last_IsMaximized) {
-                                            Last_BorderResize_Side.add("bottom");
-                                            Last_BorderResize_Offset = <Event.Control.RelativePosition_V3.X - MouseX, Event.Control.RelativePosition_V3.Y - MouseY>;
-                                        }
-                                    }
-                                    case "quad-border-right": {
-                                        if (!Last_IsMaximized) {
-                                            Last_BorderResize_Side.add("right");
-                                            Last_BorderResize_Offset = <Event.Control.RelativePosition_V3.X - MouseX, Event.Control.RelativePosition_V3.Y - MouseY>;
-                                        }
-                                    }
-                                    case "quad-corner-bottomright": {
-                                        if (!Last_IsMaximized) {
-                                            Last_BorderResize_Side = ["bottom","right"];
-                                            Last_BorderResize_Offset = <Event.Control.RelativePosition_V3.X - MouseX, Event.Control.RelativePosition_V3.Y - MouseY>;
-                                        }
-                                    }
-                                    case "quad-clearlogs": {
-                                        SendCustomEvent("DebugMode.ClearLogs", []);
-                                    }
-                                    case "quad-sendcustomevent": {
-                                        SendCustomEvent(Entry_CustomEvent_Name.Value, TL::Split(",", Entry_CustomEvent_Data.Value));
-                                        SwitchToTab(Last_TabSelected, "quad-leftpanel-logs");
-                                        Last_TabSelected = "quad-leftpanel-logs";
-                                    }
-                                    case "quad-varinsp-forvars-dumpthis": {
-                                        SendCustomEvent("DebugMode.VarInsp.Dump.This", []);
-                                        SwitchToTab(Last_TabSelected, "quad-leftpanel-logs");
-                                        Last_TabSelected = "quad-leftpanel-logs";
-                                    }
-                                    case "quad-varinsp-forvars-dumpteams0": {
-                                        SendCustomEvent("DebugMode.VarInsp.Dump.Teams0", []);
-                                        SwitchToTab(Last_TabSelected, "quad-leftpanel-logs");
-                                        Last_TabSelected = "quad-leftpanel-logs";
-                                    }
-                                    case "quad-varinsp-forvars-dumpuiall": {
-                                        SendCustomEvent("DebugMode.VarInsp.Dump.UIAll", []);
-                                        SwitchToTab(Last_TabSelected, "quad-leftpanel-logs");
-                                        Last_TabSelected = "quad-leftpanel-logs";
-                                    }
-                                    case "quad-varinsp-forvars-autofill-me": {
-                                        Entry_VarInsp_Players.Value = InputPlayer.User.Name;
-                                    }
-                                    case "quad-varinsp-forvars-autofill-visible": {
-                                        if (GUIPlayer != Null) {
-                                            Entry_VarInsp_Players.Value = GUIPlayer.User.Name;
-                                        } else {
-                                            Entry_VarInsp_Players.Value = "";
-                                        }
-                                    }
-                                }
-                                if (TL::StartsWith("quad-bots-delbots-", Event.Control.ControlId)) {
-                                    SendCustomEvent("DebugMode.Bots.DelBots", [Entry_Bots_Name.Value, TL::Split("-",Event.Control.ControlId)[3]]);
-                                    SwitchToTab(Last_TabSelected, "quad-leftpanel-logs");
-                                    Last_TabSelected = "quad-leftpanel-logs";
-                                }
-                                if (TL::StartsWith("quad-bots-addbots-", Event.Control.ControlId)) {
-                                    SendCustomEvent("DebugMode.Bots.AddBots", [Entry_Bots_Name.Value, Entry_Bots_TeamId.Value, TL::Split("-",Event.Control.ControlId)[3]]);
-                                    SwitchToTab(Last_TabSelected, "quad-leftpanel-logs");
-                                    Last_TabSelected = "quad-leftpanel-logs";
-                                }
-                                if (TL::StartsWith("quad-playerscontrol-player-", Event.Control.ControlId)) {
-                                    declare Text Target = TL::Split("-",Event.Control.ControlId)[3];
-                                    if (Target != "visible" || (Target == "visible" && GUIPlayer != Null)) {
-                                        if (Target == "visible") {
-                                            Target = GUIPlayer.User.Login;
-                                        }
-                                        SendCustomEvent("DebugMode.PlayersControl.Set", [Entry_PlayersControl_Speed.Value, Entry_PlayersControl_Steer.Value, Target]);
-                                    }
-                                }
-                                if (TL::StartsWith("quad-varinsp-forvars-player-", Event.Control.ControlId)) {
-                                    if (Entry_VarInsp_Players.Value != "") {
-                                        SendCustomEvent("DebugMode.VarInsp.ForVars.Dump.Player", [Entry_VarInsp_Players.Value, TL::Split("-",Event.Control.ControlId)[4]]);
-                                        SwitchToTab(Last_TabSelected, "quad-leftpanel-logs");
-                                        Last_TabSelected = "quad-leftpanel-logs";
-                                    }
-                                }
-                                if (TL::StartsWith("quad-varinsp-struct-player-", Event.Control.ControlId)) {
-                                    if (Entry_VarInsp_Players.Value != "") {
-                                        SendCustomEvent("DebugMode.VarInsp.Struct.Dump.Player", [Entry_VarInsp_Players.Value, TL::Split("-",Event.Control.ControlId)[4]]);
-                                        SwitchToTab(Last_TabSelected, "quad-leftpanel-logs");
-                                        Last_TabSelected = "quad-leftpanel-logs";
-                                    }
-                                }
-                                if (Event.Control.HasClass("leftpanel-button")) {
-                                    SwitchToTab(Last_TabSelected, Event.Control.ControlId);
-                                    Last_TabSelected = Event.Control.ControlId;
-                                }
-                                // Save value to persistent variable
-                                P_DebugMode_CustomEvent_Name = Entry_CustomEvent_Name.Value;
-                                P_DebugMode_CustomEvent_Data = Entry_CustomEvent_Data.Value;
-                                P_DebugMode_VarInsp_Players = Entry_VarInsp_Players.Value;
-                                P_DebugMode_Bots_Name = Entry_Bots_Name.Value;
-                                P_DebugMode_Bots_TeamId = Entry_Bots_TeamId.Value;
-                                P_DebugMode_PlayersControl_Speed = Entry_PlayersControl_Speed.Value;
-                                P_DebugMode_PlayersControl_Steer = Entry_PlayersControl_Steer.Value;
-                            }
-                            case CMlScriptEvent::Type::MouseRightClick: {
-                                if (TL::StartsWith("quad-playerscontrol-player-", Event.Control.ControlId)) {
-                                    declare Text Target = TL::Split("-",Event.Control.ControlId)[3];
-                                    if (Target != "visible" || (Target == "visible" && GUIPlayer != Null)) {
-                                        if (Target == "visible") {
-                                            Target = GUIPlayer.User.Login;
-                                        }
-                                        SendCustomEvent("DebugMode.PlayersControl.Set", ["", "", Target]);
-                                    }
-                                }
-                            }
-                            case CMlScriptEvent::Type::MouseOver: {
-                                if (Event.Control.Parent.ToolTip != "") {
-                                    Frame_Tooltip.Visible = True;
-                                    Label_Tooltip.Value = Event.Control.Parent.ToolTip;
+	declare CMlTextEdit TextEdit_Logs = (Page.GetFirstChild("textedit-logs") as CMlTextEdit);
 
-                                    // ComputeHeigth is bugged with multiple lines
-                                    declare Real TextWidth = Label_Tooltip.ComputeWidth(Event.Control.Parent.ToolTip) + 1.;
-                                    Label_Tooltip.Size.X = ML::Min(30., TextWidth);
-                                    if (TextWidth > 30.) {
-                                        Label_Tooltip.Size.Y = ML::ToReal(ML::FloorInteger((TextWidth / 30 + 1.) * 3.));
-                                    } else {
-                                        Label_Tooltip.Size.Y = 3.;
-                                    }
+	declare CMlEntry Entry_Bots_Name = (Page.GetFirstChild("entry-bots-name") as CMlEntry);
+	declare CMlEntry Entry_Bots_TeamId = (Page.GetFirstChild("entry-bots-teamid") as CMlEntry);
 
-                                    Quad_Tooltip.Size.X = ComputeBackgroundSize(Label_Tooltip, Event.Control.Parent.ToolTip, 30.) + .5;
-                                    Quad_Tooltip.Size.Y = Label_Tooltip.Size.Y + 1.5;
-                                }
-                                if (Event.Control.HasClass("button")) {
-                                    declare CMlQuad Quad = (Event.Control as CMlQuad);
-                                    Quad.Opacity = .9;
-                                } else if (Event.Control.HasClass("border")) {
-                                    declare CMlQuad Quad = (Event.Control as CMlQuad);
-                                    Quad.Opacity = 1.;
-                                } else if (Event.Control.HasClass("leftpanel-button")) {
-                                    declare CMlQuad Quad = (Event.Control as CMlQuad);
-                                    Quad.Opacity = .2;
-                                }
-                            }
-                            case CMlScriptEvent::Type::MouseOut: {
-                                if (Event.Control.Parent.ToolTip != "") {
-                                    Frame_Tooltip.Visible = False;
-                                }
-                                if (Event.Control.HasClass("button")) {
-                                    declare CMlQuad Quad = (Event.Control as CMlQuad);
-                                    Quad.Opacity = .7;
-                                } else if (Event.Control.HasClass("border")) {
-                                    declare CMlQuad Quad = (Event.Control as CMlQuad);
-                                    Quad.Opacity = .0;
-                                } else if (Event.Control.HasClass("leftpanel-button")) {
-                                    if (Last_TabSelected != Event.Control.ControlId) {
-                                        declare CMlQuad Quad = (Event.Control as CMlQuad);
-                                        Quad.Opacity = .0;
-                                    }
-                                }
-                            }
-                        }
-                    }
+	declare CMlEntry Entry_PlayersControl_Speed = (Page.GetFirstChild("entry-playerscontrol-speed") as CMlEntry);
+	declare CMlEntry Entry_PlayersControl_Steer = (Page.GetFirstChild("entry-playerscontrol-steer") as CMlEntry);
 
-                    if (Frame_Tooltip.Visible) {
-                        Frame_Tooltip.RelativePosition_V3.X = MouseX + 5;
-                        Frame_Tooltip.RelativePosition_V3.Y = MouseY + 1;
-                    }
+	declare CMlEntry Entry_CustomEvent_Name = (Page.GetFirstChild("entry-customevent-name") as CMlEntry);
+	declare CMlEntry Entry_CustomEvent_Data = (Page.GetFirstChild("entry-customevent-data") as CMlEntry);
 
-                    if (Last_DragAndDrop_State && MouseLeftButton) {
-                        Frame_MainUI.RelativePosition_V3.X = Last_DragAndDrop_Offset.X + MouseX;
-                        Frame_MainUI.RelativePosition_V3.Y = Last_DragAndDrop_Offset.Y + MouseY;
-                    } else if (Last_DragAndDrop_State && !MouseLeftButton) {
-                        Last_DragAndDrop_State = False;
-                        Last_Minimized_Pos = <Frame_MainUI.RelativePosition_V3.X, Frame_MainUI.RelativePosition_V3.Y>;
-                    }
+	declare CMlEntry Entry_VarInsp_Players = (Page.GetFirstChild("entry-varinsp-player") as CMlEntry);
 
-                    if (Last_BorderResize_Side.count > 0 && MouseLeftButton) {
-                        declare Vec2 PosOffset = <.5, -.5>; // Diff the size of the quad clicked
-                        if (Last_BorderResize_Side.count == 2 ) {
-                            Quad_Corner_BottomRight.Opacity = 1.;
-                            PosOffset = <2., -2.>;
-                        }
-                        if (Last_BorderResize_Side.exists("right")) {
-                            declare Real X = ML::Max(75., Last_BorderResize_Offset.X + MouseX + PosOffset.X);
-                            Quad_Border_Right.Opacity = 1.;
-                            Quad_Background.Size.X = X;
-                        }
-                        if (Last_BorderResize_Side.exists("bottom")) {
-                            declare Real Y = ML::Min(-50., Last_BorderResize_Offset.Y + MouseY + PosOffset.Y);
-                            Quad_Border_Bottom.Opacity = 1.;
-                            Quad_Background.Size.Y = -1. * Y;
-                        }
-                    } else if (Last_BorderResize_Side.count > 0 && !MouseLeftButton) {
-                        Last_BorderResize_Side.clear();
-                        Quad_Corner_BottomRight.Opacity = 0.;
-                        Quad_Border_Right.Opacity = 0.;
-                        Quad_Border_Bottom.Opacity = 0.;
+	wait(InputPlayer != Null);
+	declare persistent Boolean P_DebugMode_Window_Open for InputPlayer.User;
+	Frame_MainUI.Visible = P_DebugMode_Window_Open;
+	declare persistent Boolean P_DebugMode_IsMaximized for InputPlayer.User;
+	declare persistent Vec2 P_DebugMode_Window_Pos for InputPlayer.User = <-100., 65.>;
+	declare persistent Vec2 P_DebugMode_Window_Size for InputPlayer.User = <100., 60.>;
+	if (P_DebugMode_IsMaximized) {
+		Frame_MainUI.RelativePosition_V3 = <-160., 85.>;
+		Quad_Background.Size = <320., 175.>;
+		Quad_Topbar_Maximize.StyleSelected = True;
+	} else {
+		Frame_MainUI.RelativePosition_V3 = P_DebugMode_Window_Pos;
+		Quad_Background.Size = P_DebugMode_Window_Size;
+	}
+	declare persistent Text P_DebugMode_SelectedTab for InputPlayer.User = "quad-leftpanel-logs";
+	SwitchToTab("", P_DebugMode_SelectedTab);
+	declare persistent Text P_DebugMode_CustomEvent_Name for InputPlayer.User;
+	Entry_CustomEvent_Name.Value = P_DebugMode_CustomEvent_Name;
+	declare persistent Text P_DebugMode_CustomEvent_Data for InputPlayer.User;
+	Entry_CustomEvent_Data.Value = P_DebugMode_CustomEvent_Data;
+	declare persistent Text P_DebugMode_VarInsp_Players for InputPlayer.User;
+	Entry_VarInsp_Players.Value = P_DebugMode_VarInsp_Players;
+	declare persistent Text P_DebugMode_Bots_Name for InputPlayer.User;
+	Entry_Bots_Name.Value = P_DebugMode_Bots_Name;
+	declare persistent Text P_DebugMode_Bots_TeamId for InputPlayer.User;
+	Entry_Bots_TeamId.Value = P_DebugMode_Bots_TeamId;
+	declare persistent Text P_DebugMode_PlayersControl_Speed for InputPlayer.User;
+	Entry_PlayersControl_Speed.Value = P_DebugMode_PlayersControl_Speed;
+	declare persistent Text P_DebugMode_PlayersControl_Steer for InputPlayer.User;
+	Entry_PlayersControl_Steer.Value = P_DebugMode_PlayersControl_Steer;
 
-                        // Save pos
-                        Last_Minimized_Size = Quad_Background.Size;
-                    }
+	declare netread Text Net_DebugMode_Logs for Teams[0];
+	declare netread Integer Net_DebugMode_Logs_Serial for Teams[0];
+	declare Integer Last_Logs_Serial;
 
-                    // Update sizes & pos
-                    if (Quad_Background.Size.X != Quad_Border_Bottom.Size.X || Quad_Background.Size.Y != Quad_Border_Right.Size.Y) {
-                        Quad_Topbar.Size.X = Quad_Background.Size.X;
-                        Frame_Topbar_Buttons.RelativePosition_V3.X = Quad_Background.Size.X;
-                        Quad_Border_Bottom.Size.X = Quad_Background.Size.X;
-                        Quad_Border_Right.Size.Y = Quad_Background.Size.Y;
-                        Quad_Border_Right.RelativePosition_V3.X = Quad_Background.Size.X - 0.5;
-                        Quad_Border_Bottom.RelativePosition_V3.Y = -1. * Quad_Background.Size.Y + 0.5;
-                        Quad_Corner_BottomRight.RelativePosition_V3 = <Quad_Background.Size.X - 2., -1. * Quad_Background.Size.Y + 2.>;
-                        Quad_LeftPanel_Separator.Size.Y = Quad_Background.Size.Y - 2 - 5;
-                        TextEdit_Logs.Size = <Quad_Background.Size.X - 28, Quad_Background.Size.Y - 12>;
-                        TextEdit_Logs.MaxLine += 1;
-                        Entry_CustomEvent_Name.Size.X = Quad_Background.Size.X - 28;
-                        Entry_CustomEvent_Data.Size.X = Quad_Background.Size.X - 28;
-                        Entry_VarInsp_Players.Size.X = Quad_Background.Size.X - 28;
-                        Entry_Bots_Name.Size.X = Quad_Background.Size.X - 28;
-                        Entry_Bots_TeamId.Size.X = Quad_Background.Size.X - 28;
-                        Entry_PlayersControl_Speed.Size.X = Quad_Background.Size.X - 28;
-                        Entry_PlayersControl_Steer.Size.X = Quad_Background.Size.X - 28;
-                    }
+	declare Boolean Last_DragAndDrop_State = False;
+	declare Vec2 Last_DragAndDrop_Offset;
 
-                    if (Last_Logs_Serial != Net_DebugMode_Logs_Serial) {
-                        Last_Logs_Serial = Net_DebugMode_Logs_Serial;
-                        TextEdit_Logs.Value = Net_DebugMode_Logs;
-                    }
-                }
-            }
-        --></script>
-    </manialink>
-    """;
+	declare Text[] Last_BorderResize_Side;
+	declare Vec2 Last_BorderResize_Offset;
+	declare Real Last_BorderResize_SizeOffset;
+
+	while (True) {
+		yield;
+		foreach (Event in PendingEvents) {
+			switch (Event.Type) {
+				case CMlScriptEvent::Type::MouseClick: {
+					switch (Event.Control.ControlId) {
+						case "quad-displaybutton": {
+							Frame_MainUI.Visible = !Frame_MainUI.Visible;
+							P_DebugMode_Window_Open = Frame_MainUI.Visible;
+						}
+						case "quad-topbar-quit": {
+							Frame_MainUI.Visible = False;
+							P_DebugMode_Window_Open = Frame_MainUI.Visible;
+						}
+						case "quad-topbar-maximize": {
+							P_DebugMode_IsMaximized = MaximizeMinimizeWindow(Quad_Topbar_Maximize, Frame_MainUI, P_DebugMode_Window_Pos, Quad_Background, P_DebugMode_Window_Size);
+						}
+						case "quad-topbar": {
+							if (!P_DebugMode_IsMaximized) {
+								Last_DragAndDrop_State = True;
+								Last_DragAndDrop_Offset = <Event.Control.Parent.Parent.Parent.RelativePosition_V3.X - ML::Clamp(MouseX, -160., 160.), Event.Control.Parent.Parent.Parent.RelativePosition_V3.Y - ML::Clamp(MouseY, -90., 90.)>;
+							}
+						}
+						case "quad-border-bottom": {
+							if (!P_DebugMode_IsMaximized) {
+								Last_BorderResize_Side.add("bottom");
+								Last_BorderResize_Offset = <Event.Control.RelativePosition_V3.X - ML::Clamp(MouseX, -160., 160.), Event.Control.RelativePosition_V3.Y - ML::Clamp(MouseY, -90., 90.)>;
+							}
+						}
+						case "quad-border-right": {
+							if (!P_DebugMode_IsMaximized) {
+								Last_BorderResize_Side.add("right");
+								Last_BorderResize_Offset = <Event.Control.RelativePosition_V3.X - ML::Clamp(MouseX, -160., 160.), Event.Control.RelativePosition_V3.Y - ML::Clamp(MouseY, -90., 90.)>;
+							}
+						}
+						case "quad-corner-bottomright": {
+							if (!P_DebugMode_IsMaximized) {
+								Last_BorderResize_Side = ["bottom","right"];
+								Last_BorderResize_Offset = <Event.Control.RelativePosition_V3.X - ML::Clamp(MouseX, -160., 160.), Event.Control.RelativePosition_V3.Y - ML::Clamp(MouseY, -90., 90.)>;
+							}
+						}
+						case "quad-clearlogs": {
+							SendCustomEvent("DebugMode.ClearLogs", []);
+						}
+						case "quad-sendcustomevent": {
+							SendCustomEvent(Entry_CustomEvent_Name.Value, TL::Split(",", Entry_CustomEvent_Data.Value));
+							SwitchToTab(P_DebugMode_SelectedTab, "quad-leftpanel-logs");
+							P_DebugMode_SelectedTab = "quad-leftpanel-logs";
+						}
+						case "quad-varinsp-forvars-dumpthis": {
+							SendCustomEvent("DebugMode.VarInsp.Dump.This", []);
+							SwitchToTab(P_DebugMode_SelectedTab, "quad-leftpanel-logs");
+							P_DebugMode_SelectedTab = "quad-leftpanel-logs";
+						}
+						case "quad-varinsp-forvars-dumpteams0": {
+							SendCustomEvent("DebugMode.VarInsp.Dump.Teams0", []);
+							SwitchToTab(P_DebugMode_SelectedTab, "quad-leftpanel-logs");
+							P_DebugMode_SelectedTab = "quad-leftpanel-logs";
+						}
+						case "quad-varinsp-forvars-dumpuiall": {
+							SendCustomEvent("DebugMode.VarInsp.Dump.UIAll", []);
+							SwitchToTab(P_DebugMode_SelectedTab, "quad-leftpanel-logs");
+							P_DebugMode_SelectedTab = "quad-leftpanel-logs";
+						}
+						case "quad-varinsp-forvars-autofill-me": {
+							Entry_VarInsp_Players.Value = InputPlayer.User.Name;
+						}
+						case "quad-varinsp-forvars-autofill-visible": {
+							if (GUIPlayer != Null) {
+								Entry_VarInsp_Players.Value = GUIPlayer.User.Name;
+							} else {
+								Entry_VarInsp_Players.Value = "";
+							}
+						}
+					}
+					if (TL::StartsWith("quad-bots-delbots-", Event.Control.ControlId)) {
+						SendCustomEvent("DebugMode.Bots.DelBots", [Entry_Bots_Name.Value, TL::Split("-",Event.Control.ControlId)[3]]);
+					}
+					if (TL::StartsWith("quad-bots-addbots-", Event.Control.ControlId)) {
+						SendCustomEvent("DebugMode.Bots.AddBots", [Entry_Bots_Name.Value, Entry_Bots_TeamId.Value, TL::Split("-",Event.Control.ControlId)[3]]);
+					}
+					if (TL::StartsWith("quad-playerscontrol-player-", Event.Control.ControlId)) {
+						declare Text Target = TL::Split("-",Event.Control.ControlId)[3];
+						if (Target != "visible" || (Target == "visible" && GUIPlayer != Null)) {
+							if (Target == "visible") {
+								Target = GUIPlayer.User.Login;
+							}
+							SendCustomEvent("DebugMode.PlayersControl.Set", [Entry_PlayersControl_Speed.Value, Entry_PlayersControl_Steer.Value, Target]);
+						}
+					}
+					if (TL::StartsWith("quad-varinsp-forvars-player-", Event.Control.ControlId)) {
+						if (Entry_VarInsp_Players.Value != "") {
+							SendCustomEvent("DebugMode.VarInsp.ForVars.Dump.Player", [Entry_VarInsp_Players.Value, TL::Split("-",Event.Control.ControlId)[4]]);
+							SwitchToTab(P_DebugMode_SelectedTab, "quad-leftpanel-logs");
+							P_DebugMode_SelectedTab = "quad-leftpanel-logs";
+						}
+					}
+					if (TL::StartsWith("quad-varinsp-struct-player-", Event.Control.ControlId)) {
+						if (Entry_VarInsp_Players.Value != "") {
+							SendCustomEvent("DebugMode.VarInsp.Struct.Dump.Player", [Entry_VarInsp_Players.Value, TL::Split("-",Event.Control.ControlId)[4]]);
+							SwitchToTab(P_DebugMode_SelectedTab, "quad-leftpanel-logs");
+							P_DebugMode_SelectedTab = "quad-leftpanel-logs";
+						}
+					}
+					if (Event.Control.HasClass("leftpanel-button")) {
+						SwitchToTab(P_DebugMode_SelectedTab, Event.Control.ControlId);
+						P_DebugMode_SelectedTab = Event.Control.ControlId;
+					}
+					// Save value to persistent variable
+					P_DebugMode_CustomEvent_Name = Entry_CustomEvent_Name.Value;
+					P_DebugMode_CustomEvent_Data = Entry_CustomEvent_Data.Value;
+					P_DebugMode_VarInsp_Players = Entry_VarInsp_Players.Value;
+					P_DebugMode_Bots_Name = Entry_Bots_Name.Value;
+					P_DebugMode_Bots_TeamId = Entry_Bots_TeamId.Value;
+					P_DebugMode_PlayersControl_Speed = Entry_PlayersControl_Speed.Value;
+					P_DebugMode_PlayersControl_Steer = Entry_PlayersControl_Steer.Value;
+				}
+				case CMlScriptEvent::Type::MouseRightClick: {
+					if (TL::StartsWith("quad-playerscontrol-player-", Event.Control.ControlId)) {
+						declare Text Target = TL::Split("-",Event.Control.ControlId)[3];
+						if (Target != "visible" || (Target == "visible" && GUIPlayer != Null)) {
+							if (Target == "visible") {
+								Target = GUIPlayer.User.Login;
+							}
+							SendCustomEvent("DebugMode.PlayersControl.Set", ["", "", Target]);
+						}
+					}
+				}
+				case CMlScriptEvent::Type::MouseOver: {
+					if (Event.Control.Parent.ToolTip != "") {
+						Frame_Tooltip.Visible = True;
+						Label_Tooltip.Value = Event.Control.Parent.ToolTip;
+
+						// ComputeHeigth is bugged with multiple lines
+						declare Real TextWidth = Label_Tooltip.ComputeWidth(Event.Control.Parent.ToolTip) + 1.;
+						Label_Tooltip.Size.X = ML::Min(30., TextWidth);
+						if (TextWidth > 30.) {
+							Label_Tooltip.Size.Y = ML::ToReal(ML::FloorInteger((TextWidth / 30 + 1.) * 3.));
+						} else {
+							Label_Tooltip.Size.Y = 3.;
+						}
+
+						Quad_Tooltip.Size.X = ComputeBackgroundSize(Label_Tooltip, Event.Control.Parent.ToolTip, 30.) + .5;
+						Quad_Tooltip.Size.Y = Label_Tooltip.Size.Y + 1.5;
+					}
+					if (Event.Control.HasClass("button")) {
+						declare CMlQuad Quad = (Event.Control as CMlQuad);
+						Quad.Opacity = .9;
+					} else if (Event.Control.HasClass("border")) {
+						declare CMlQuad Quad = (Event.Control as CMlQuad);
+						Quad.Opacity = 1.;
+					} else if (Event.Control.HasClass("leftpanel-button")) {
+						declare CMlQuad Quad = (Event.Control as CMlQuad);
+						Quad.Opacity = .2;
+					}
+				}
+				case CMlScriptEvent::Type::MouseOut: {
+					if (Event.Control.Parent.ToolTip != "") {
+						Frame_Tooltip.Visible = False;
+					}
+					if (Event.Control.HasClass("button")) {
+						declare CMlQuad Quad = (Event.Control as CMlQuad);
+						Quad.Opacity = .7;
+					} else if (Event.Control.HasClass("border")) {
+						declare CMlQuad Quad = (Event.Control as CMlQuad);
+						Quad.Opacity = .0;
+					} else if (Event.Control.HasClass("leftpanel-button")) {
+						if (P_DebugMode_SelectedTab != Event.Control.ControlId) {
+							declare CMlQuad Quad = (Event.Control as CMlQuad);
+							Quad.Opacity = .0;
+						}
+					}
+				}
+				case CMlScriptEvent::Type::KeyPress: {
+					if (Event.KeyCode == 38) { // F1
+						Frame_MainUI.Visible = !Frame_MainUI.Visible;
+						P_DebugMode_Window_Open = Frame_MainUI.Visible;
+					}
+				}
+			}
+		}
+
+		if (Frame_Tooltip.Visible) {
+			Frame_Tooltip.RelativePosition_V3.X = MouseX + 5;
+			Frame_Tooltip.RelativePosition_V3.Y = MouseY + 1;
+		}
+
+		if (Last_DragAndDrop_State && MouseLeftButton) {
+			Frame_MainUI.RelativePosition_V3.X = Last_DragAndDrop_Offset.X + ML::Clamp(MouseX, -160., 160.);
+			Frame_MainUI.RelativePosition_V3.Y = Last_DragAndDrop_Offset.Y + ML::Clamp(MouseY, -90., 90.);
+		} else if (Last_DragAndDrop_State && !MouseLeftButton) {
+			Last_DragAndDrop_State = False;
+			P_DebugMode_Window_Pos = <Frame_MainUI.RelativePosition_V3.X, Frame_MainUI.RelativePosition_V3.Y>;
+		}
+
+		if (Last_BorderResize_Side.count > 0 && MouseLeftButton) {
+			declare Vec2 PosOffset = <.5, -.5>; // Diff the size of the quad clicked
+			if (Last_BorderResize_Side.count == 2 ) {
+				Quad_Corner_BottomRight.Opacity = 1.;
+				PosOffset = <2., -2.>;
+			}
+			if (Last_BorderResize_Side.exists("right")) {
+				declare Real X = ML::Max(75., Last_BorderResize_Offset.X + ML::Clamp(MouseX, -160., 160.) + PosOffset.X);
+				Quad_Border_Right.Opacity = 1.;
+				Quad_Background.Size.X = X;
+			}
+			if (Last_BorderResize_Side.exists("bottom")) {
+				declare Real Y = ML::Min(-50., Last_BorderResize_Offset.Y + ML::Clamp(MouseY, -90., 90.) + PosOffset.Y);
+				Quad_Border_Bottom.Opacity = 1.;
+				Quad_Background.Size.Y = -1. * Y;
+			}
+		} else if (Last_BorderResize_Side.count > 0 && !MouseLeftButton) {
+			Last_BorderResize_Side.clear();
+			Quad_Corner_BottomRight.Opacity = 0.;
+			Quad_Border_Right.Opacity = 0.;
+			Quad_Border_Bottom.Opacity = 0.;
+
+			// Save pos
+			P_DebugMode_Window_Size = Quad_Background.Size;
+		}
+
+		// Update sizes & pos
+		if (Quad_Background.Size.X != Quad_Border_Bottom.Size.X || Quad_Background.Size.Y != Quad_Border_Right.Size.Y) {
+			Quad_Topbar.Size.X = Quad_Background.Size.X;
+			Frame_Topbar_Buttons.RelativePosition_V3.X = Quad_Background.Size.X;
+			Quad_Border_Bottom.Size.X = Quad_Background.Size.X;
+			Quad_Border_Right.Size.Y = Quad_Background.Size.Y;
+			Quad_Border_Right.RelativePosition_V3.X = Quad_Background.Size.X - 0.5;
+			Quad_Border_Bottom.RelativePosition_V3.Y = -1. * Quad_Background.Size.Y + 0.5;
+			Quad_Corner_BottomRight.RelativePosition_V3 = <Quad_Background.Size.X - 2., -1. * Quad_Background.Size.Y + 2.>;
+			Quad_LeftPanel_Separator.Size.Y = Quad_Background.Size.Y - 2 - 5;
+			TextEdit_Logs.Size = <Quad_Background.Size.X - 28, Quad_Background.Size.Y - 12>;
+			TextEdit_Logs.MaxLine += 1;
+			Entry_CustomEvent_Name.Size.X = Quad_Background.Size.X - 28;
+			Entry_CustomEvent_Data.Size.X = Quad_Background.Size.X - 28;
+			Entry_VarInsp_Players.Size.X = Quad_Background.Size.X - 28;
+			Entry_Bots_Name.Size.X = Quad_Background.Size.X - 28;
+			Entry_Bots_TeamId.Size.X = Quad_Background.Size.X - 28;
+			Entry_PlayersControl_Speed.Size.X = Quad_Background.Size.X - 28;
+			Entry_PlayersControl_Steer.Size.X = Quad_Background.Size.X - 28;
+		}
+
+		if (Last_Logs_Serial != Net_DebugMode_Logs_Serial) {
+			Last_Logs_Serial = Net_DebugMode_Logs_Serial;
+			TextEdit_Logs.Value = Net_DebugMode_Logs;
+		}
+	}
+}
+--></script>
+</manialink>
+""";
 }
