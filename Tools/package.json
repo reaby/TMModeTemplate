@@ -10,6 +10,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@evotm/gbxclient": "^1.3.0"
+    "@evotm/gbxclient": "^1.3.1"
   }
 }
