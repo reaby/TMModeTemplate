@@ -31,7 +31,7 @@ async function reloadMode() {
 async function main() {
 	try {
 		await gbx.connect("127.0.0.1", config.port);
-		await gbx.call("SetApiVersion", "2022-03-21");
+		await gbx.call("SetApiVersion", "2023-04-24");
 		await gbx.call("Authenticate", "SuperAdmin", config.password);
 	} catch (e) {
 		console.log(e);

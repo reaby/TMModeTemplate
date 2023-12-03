@@ -48,7 +48,7 @@ Void Player_Init(CSmPlayer _Player) {
 	_Player.TrustClientSimu = True; // set to False if you intent to use collision
 	_Player.UseCrudeExtrapolation = True;
 	_Player.ForceModelId = NullId; // set custom skins here
-	Race::ApplyNetworkMode(_Player);
+	//Race::ApplyNetworkMode(_Player);
 }
 
 /**

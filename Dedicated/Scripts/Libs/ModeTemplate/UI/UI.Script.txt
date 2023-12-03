@@ -26,7 +26,7 @@ Void InitSettings() {
 	UseClans = True;
 	UseForcedClans = True;
 	UsePvPCollisions = False;
-	UsePvECollisions = True;
+	UsePvECollisions = False;
 	UsePvPWeapons = False;
 	UseGuns = False;
 	UseInterractiveScreensIn3d = False;
